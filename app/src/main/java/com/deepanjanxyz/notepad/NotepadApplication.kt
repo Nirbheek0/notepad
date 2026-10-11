@@ -26,7 +26,7 @@ import com.deepanjanxyz.notepad.domain.usecase.note.RestoreNoteUseCase
 import com.deepanjanxyz.notepad.domain.usecase.note.SaveNoteUseCase
 import com.deepanjanxyz.notepad.domain.usecase.note.SetNoteReminderUseCase
 import com.deepanjanxyz.notepad.domain.usecase.note.TogglePinUseCase
-import com.deepanxyz.notepad.domain.usecase.note.TrashNoteUseCase
+import com.deepanjanxyz.notepad.domain.usecase.note.TrashNoteUseCase
 import com.deepanjanxyz.notepad.domain.usecase.settings.GetSettingsUseCase
 import com.deepanjanxyz.notepad.domain.usecase.settings.SaveSettingsUseCase
 import com.deepanjanxyz.notepad.domain.usecase.settings.SettingsUseCases
