@@ -11,7 +11,7 @@ single responsibility, so it is easy to see what runs, when, and why.
 | [`android.yml`](./android.yml) | Build and Sign APK | manual (`workflow_dispatch`) | Builds the unsigned release APK, decodes the keystore from secrets, signs the APK, and uploads it as the `release-apk` artifact. |
 | [`mirror.yml`](./mirror.yml) | Multi-Platform Smart Auto Mirroring | `push` of any branch or tag | Materializes every branch locally, then mirrors all branches and tags to GitLab and Codeberg. It force-syncs only when a normal push is rejected as a divergence (non-fast-forward or an existing tag); any other failure (auth, network, hooks) is reported and fails the run instead of force-pushing. |
 | [`universal-pr-check.yml`](./universal-pr-check.yml) | Universal PR Check | `pull_request` (opened, synchronize, reopened) to `dev` | Runs the build, unit tests, lint, detekt and a secret scan as parallel jobs on JDK 21, then posts a single status-table comment on the PR and blocks the merge if any check fails. |
-| [`auto-release.yml`](./auto-release.yml) | Auto Release | `pull_request` / `push` to `main` | Requires a version bump only when shipping files change (a deep diff check ignores docs, images, comments and whitespace-only edits), then on merge to `main` publishes a GitHub release tagged `v<versionName>` with the signed, renamed APKs and traced release notes. |
+| [`auto-release.yml`](./auto-release.yml) | Auto Release | `pull_request` / `push` to `main`, plus `issue_comment` | Requires a version bump only when shipping files change (a deep diff check ignores docs, images, comments and whitespace-only edits); the warning offers a `/bump-version` command that raises the version on the branch for you; on merge to `main` it publishes a GitHub release tagged `v<versionName>` with the signed, renamed APKs and traced release notes. |
 | [`store-screenshots.yml`](./store-screenshots.yml) | Store Screenshots | manual (`workflow_dispatch`) | Builds a debug APK and captures the store screenshots on a headless Pixel 6 emulator, then uploads them as artifacts. |
 | [`pr-review-commands.yml`](./pr-review-commands.yml) | PR Review Commands | `issue_comment` (created) | Turns `/review`, `/test`, `/force-review`, `/add-approve-user` and `/remove-approve-user` comments on `main` pull requests into an automated review or an allowlist change, after checking the commenter against `.github/pr-reviewers.yml`. |
 
@@ -151,6 +151,14 @@ optional Copilot summary when `COPILOT_TOKEN` is configured.
 
 **Permissions.** Least privilege: the workflow default is `contents: read`; only
 the `release` job is elevated to `contents: write`.
+
+**Auto-bump on command (`bump` job).** The version-guard warning offers a one-step
+fix. Commenting `/bump-version` on a `main` pull request — from a person with
+write access, on a branch of this repository rather than a fork — makes the `bump`
+job raise `versionCode` and `versionName` on that branch (always above the latest
+release) and push the change. The guard then re-runs on its own, and the release
+starts on merge as usual. GitHub comments cannot carry a real button, so this
+command is the closest equivalent; the warning spells it out.
 
 ## Store screenshots (`store-screenshots.yml`)
 
