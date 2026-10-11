@@ -19,8 +19,7 @@ class TaskWidgetService : RemoteViewsService() {
         TaskWidgetFactory(applicationContext)
 }
 
-private class TaskWidgetFactory(private val context: Context) :
-    RemoteViewsService.RemoteViewsFactory {
+private class TaskWidgetFactory(private val context: Context) : RemoteViewsService.RemoteViewsFactory {
 
     private var rows: List<WidgetRow> = emptyList()
 
@@ -43,16 +42,15 @@ private class TaskWidgetFactory(private val context: Context) :
 
     override fun getViewTypeCount(): Int = VIEW_TYPE_COUNT
 
-    override fun getItemViewType(position: Int): Int =
-        if (rows[position] is WidgetRow.Group) VIEW_TYPE_GROUP else VIEW_TYPE_ITEM
-
     override fun getItemId(position: Int): Long = position.toLong()
 
     override fun hasStableIds(): Boolean = false
 
     private companion object {
-        const val VIEW_TYPE_GROUP = 0
-        const val VIEW_TYPE_ITEM = 1
-        const val VIEW_TYPE_COUNT = 2
+        /**
+         * The factory interface has no per-position view type, so every row is
+         * reported as the same type and [getViewAt] supplies the right layout.
+         */
+        const val VIEW_TYPE_COUNT = 1
     }
 }
