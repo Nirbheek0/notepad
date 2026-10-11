@@ -30,6 +30,10 @@ class NoteRepositoryImpl(
         notes.map { it.toDomain() }
     }
 
+    override suspend fun getPinnedChecklistNotes(): List<Note> = withContext(ioDispatcher) {
+        noteDao.getPinnedChecklistNotes().map { it.toDomain() }
+    }
+
     override fun searchNotes(query: String): Flow<List<Note>> = noteDao.searchNotes(query).map { notes ->
         notes.map { it.toDomain() }
     }

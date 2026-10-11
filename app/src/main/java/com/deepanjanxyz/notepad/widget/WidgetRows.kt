@@ -11,7 +11,6 @@ import com.deepanjanxyz.notepad.domain.model.ChecklistItem
 import com.deepanjanxyz.notepad.domain.model.Note
 import com.deepanjanxyz.notepad.domain.repository.NoteRepository
 import com.deepanjanxyz.notepad.ui.theme.NoteColorOptions
-import kotlinx.coroutines.flow.first
 
 /** A checklist note together with the items parsed out of it. */
 internal data class WidgetTaskGroup(val note: Note, val items: List<ChecklistItem>)
@@ -37,10 +36,15 @@ internal fun Note.hasChecklist(): Boolean = content.lines().any { line ->
         line.startsWith(CHECKLIST_CHECKED_PREFIX, ignoreCase = true)
 }
 
-/** The pinned checklist notes, newest first, each with its parsed items. */
+/**
+ * The pinned checklist notes, newest first, each with its parsed items.
+ *
+ * The repository hands back only the rows that can match, so a widget refresh
+ * reads a handful of notes instead of the whole database.
+ */
 internal suspend fun loadTaskGroups(repository: NoteRepository): List<WidgetTaskGroup> =
-    repository.getAllNotes().first()
-        .filter { it.isPinned && it.hasChecklist() }
+    repository.getPinnedChecklistNotes()
+        .filter { it.hasChecklist() }
         .map { note -> WidgetTaskGroup(note, ChecklistItem.parseList(note.content)) }
 
 /** Flattens the groups into the flat row list the widget's ListView renders. */

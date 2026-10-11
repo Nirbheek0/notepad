@@ -21,6 +21,19 @@ interface NoteDao {
     @Query("SELECT * FROM notes_table WHERE IN_TRASH = 1 ORDER BY ID DESC")
     fun getTrashNotes(): Flow<List<NoteEntity>>
 
+    /**
+     * The pinned checklist notes the home-screen widget renders.
+     *
+     * Filtered in SQL so the widget never pulls every note out of the database
+     * and inspects it in Kotlin - only the handful of rows it actually shows are
+     * read, which keeps a widget refresh cheap however many notes exist.
+     */
+    @Query(
+        "SELECT * FROM notes_table WHERE IN_TRASH = 0 AND IN_ARCHIVE = 0 AND PINNED = 1 " +
+            "AND (CONTENT LIKE '%[ ] %' OR CONTENT LIKE '%[x] %') ORDER BY ID DESC"
+    )
+    suspend fun getPinnedChecklistNotes(): List<NoteEntity>
+
     @Query("SELECT * FROM notes_table WHERE IN_TRASH = 0 AND IN_ARCHIVE = 0 AND (TITLE LIKE '%' || :query || '%' OR CONTENT LIKE '%' || :query || '%' OR TAGS LIKE '%' || :query || '%') ORDER BY PINNED DESC, ID DESC")
     fun searchNotes(query: String): Flow<List<NoteEntity>>
 
