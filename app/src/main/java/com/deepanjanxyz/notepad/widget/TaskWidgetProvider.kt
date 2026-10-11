@@ -27,6 +27,20 @@ import kotlinx.coroutines.launch
 /** A checklist note together with the items parsed out of it. */
 private data class WidgetTaskGroup(val note: Note, val items: List<ChecklistItem>)
 
+/** Checklist line prefixes, matching the format the editor writes and reads. */
+private const val CHECKLIST_UNCHECKED_PREFIX = "[ ] "
+private const val CHECKLIST_CHECKED_PREFIX = "[x] "
+
+/**
+ * True when the note actually holds checklist lines - the same test the editor
+ * uses before it treats a note as a checklist. Without it a plain text note
+ * would be listed as a task list, and ticking an item would rewrite its lines.
+ */
+private fun Note.hasChecklist(): Boolean = content.lines().any { line ->
+    line.startsWith(CHECKLIST_UNCHECKED_PREFIX) ||
+        line.startsWith(CHECKLIST_CHECKED_PREFIX, ignoreCase = true)
+}
+
 /**
  * Home-screen widget that surfaces the checklist items of every pinned note, so
  * pending tasks can be seen and ticked without opening the app.
@@ -62,17 +76,9 @@ class TaskWidgetProvider : AppWidgetProvider() {
     private fun toggleItem(context: Context, noteId: Long, itemIndex: Int) {
         val appContext = context.applicationContext
         CoroutineScope(Dispatchers.IO).launch {
-            val repository = NoteRepositoryProvider.create(appContext)
-            val note = repository.getNoteById(noteId)
-            if (note != null) {
-                val items = ChecklistItem.parseList(note.content).toMutableList()
-                if (itemIndex in items.indices) {
-                    val item = items[itemIndex]
-                    items[itemIndex] = item.copy(isChecked = !item.isChecked)
-                    val content = ChecklistItem.serializeList(items)
-                    repository.insertOrUpdate(note.copy(content = content))
-                }
-            }
+            // The repository flips the item inside a database transaction, so a
+            // burst of taps cannot lose an update.
+            NoteRepositoryProvider.create(appContext).toggleChecklistItem(noteId, itemIndex)
             renderAll(appContext)
         }
     }
@@ -112,9 +118,8 @@ class TaskWidgetProvider : AppWidgetProvider() {
 
         private suspend fun taskGroups(repository: NoteRepository): List<WidgetTaskGroup> =
             repository.getAllNotes().first()
-                .filter { it.isPinned }
+                .filter { it.isPinned && it.hasChecklist() }
                 .map { note -> WidgetTaskGroup(note, ChecklistItem.parseList(note.content)) }
-                .filter { it.items.isNotEmpty() }
 
         private fun buildViews(context: Context, groups: List<WidgetTaskGroup>): RemoteViews {
             val views = RemoteViews(context.packageName, R.layout.widget_tasks)

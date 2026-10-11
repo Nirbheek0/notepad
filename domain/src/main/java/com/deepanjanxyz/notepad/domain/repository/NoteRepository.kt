@@ -24,6 +24,9 @@ interface NoteRepository {
     suspend fun togglePin(id: Long, isPinned: Boolean)
     suspend fun updateReminderTime(id: Long, reminderTime: Long?)
 
+    /** Flips a single checklist item on a note, atomically. */
+    suspend fun toggleChecklistItem(noteId: Long, itemIndex: Int)
+
     // Room Label management
     fun getAllLabels(): Flow<List<String>>
     suspend fun insertLabel(name: String)

@@ -108,6 +108,11 @@ class NoteRepositoryImpl(
         Unit
     }
 
+    override suspend fun toggleChecklistItem(noteId: Long, itemIndex: Int) = withContext(ioDispatcher) {
+        noteDao.toggleChecklistItem(noteId, itemIndex)
+        Unit
+    }
+
     override suspend fun updateReminderTime(id: Long, reminderTime: Long?) = withContext(ioDispatcher) {
         noteDao.updateReminderTime(id, reminderTime)
         Unit

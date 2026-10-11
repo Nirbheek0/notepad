@@ -7,6 +7,7 @@ import androidx.room.Query
 import androidx.room.Transaction
 import androidx.room.Update
 import com.deepanjanxyz.notepad.data.local.entity.NoteEntity
+import com.deepanjanxyz.notepad.domain.model.ChecklistItem
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -73,6 +74,26 @@ interface NoteDao {
 
     @Query("UPDATE notes_table SET REMINDER_TIME = :reminderTime WHERE ID = :id")
     suspend fun updateReminderTime(id: Long, reminderTime: Long?): Int
+
+    /**
+     * Flips one checklist item on a note.
+     *
+     * The read, the edit and the write all happen inside a single transaction, so
+     * two rapid taps (or a toggle racing a save from the app) cannot clobber each
+     * other by both starting from the same stale copy of the content.
+     */
+    @Transaction
+    suspend fun toggleChecklistItem(id: Long, itemIndex: Int): Boolean {
+        val entity = getNoteById(id)
+        val items = entity?.let { ChecklistItem.parseList(it.content).toMutableList() }
+        if (entity == null || items == null || itemIndex !in items.indices) {
+            return false
+        }
+        val item = items[itemIndex]
+        items[itemIndex] = item.copy(isChecked = !item.isChecked)
+        updateNote(entity.copy(content = ChecklistItem.serializeList(items)))
+        return true
+    }
 
     /**
      * Renames a tag across every note in a single transaction.

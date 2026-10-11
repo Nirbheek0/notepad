@@ -1,6 +1,8 @@
 package com.deepanjanxyz.notepad
 
+import android.app.Activity
 import android.app.Application
+import android.os.Bundle
 import com.deepanjanxyz.notepad.data.NoteRepositoryProvider
 import com.deepanjanxyz.notepad.data.SettingsRepositoryProvider
 import com.deepanjanxyz.notepad.domain.repository.NoteRepository
@@ -27,9 +29,34 @@ import com.deepanjanxyz.notepad.domain.usecase.note.TrashNoteUseCase
 import com.deepanjanxyz.notepad.domain.usecase.settings.GetSettingsUseCase
 import com.deepanjanxyz.notepad.domain.usecase.settings.SaveSettingsUseCase
 import com.deepanjanxyz.notepad.domain.usecase.settings.SettingsUseCases
+import com.deepanjanxyz.notepad.widget.TaskWidgetProvider
 
 class NotepadApplication : Application() {
     val container: AppContainer by lazy { AppContainer(this) }
+
+    override fun onCreate() {
+        super.onCreate()
+        // The home-screen widget mirrors the notes, so it is rebuilt whenever the
+        // app leaves the foreground - the moment a pin, unpin or edit has just
+        // finished and the user is about to look at the home screen.
+        registerActivityLifecycleCallbacks(object : Application.ActivityLifecycleCallbacks {
+            override fun onActivityStopped(activity: Activity) {
+                TaskWidgetProvider.refresh(activity.applicationContext)
+            }
+
+            override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) = Unit
+
+            override fun onActivityStarted(activity: Activity) = Unit
+
+            override fun onActivityResumed(activity: Activity) = Unit
+
+            override fun onActivityPaused(activity: Activity) = Unit
+
+            override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) = Unit
+
+            override fun onActivityDestroyed(activity: Activity) = Unit
+        })
+    }
 }
 
 /**
