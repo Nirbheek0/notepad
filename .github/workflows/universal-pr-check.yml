@@ -14,6 +14,7 @@ jobs:
   build:
     name: Debug & Release build
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     env:
       KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
       KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
@@ -60,6 +61,7 @@ jobs:
   unit-tests:
     name: Unit tests
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
@@ -87,6 +89,7 @@ jobs:
   lint:
     name: Android lint
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     outputs:
       warnings: ${{ steps.count.outputs.warnings }}
     steps:
@@ -128,6 +131,7 @@ jobs:
   detekt:
     name: Static analysis (detekt)
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     outputs:
       configured: ${{ steps.detect.outputs.configured }}
     steps:
@@ -167,6 +171,7 @@ jobs:
   secrets-scan:
     name: Secret scan
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
@@ -181,6 +186,7 @@ jobs:
   report:
     name: PR status report
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     needs: [build, unit-tests, lint, detekt, secrets-scan]
     if: always()
     steps:

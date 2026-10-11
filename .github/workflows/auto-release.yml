@@ -17,8 +17,10 @@ permissions:
 jobs:
   version-guard:
     name: Guard - version bump required
+    needs: guard
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: read
       pull-requests: write
@@ -28,8 +30,29 @@ jobs:
         with:
           fetch-depth: 0
 
+      # Reuse the shipping-file check from the `guard` job: a pull request that
+      # only touches documentation (README, *.md, *.txt, images, or any other
+      # non-shipping path) must not be forced to raise the version.
+      - name: Decide whether this pull request must bump the version
+        id: scope
+        env:
+          CODE_CHANGED: ${{ needs.guard.outputs.code_changed }}
+        run: |
+          if [ "$CODE_CHANGED" = "true" ]; then
+            echo "required=true" >> "$GITHUB_OUTPUT"
+            echo "Shipping files changed; a version bump is required."
+          else
+            echo "required=false" >> "$GITHUB_OUTPUT"
+            echo "Documentation-only change (README, .md, .txt, images or other non-shipping files); no version bump is required."
+          fi
+
+      - name: Note that a documentation-only change skips the version bump
+        if: steps.scope.outputs.required != 'true'
+        run: echo "::notice::Documentation-only change; the version bump requirement is skipped."
+
       - name: Compare the PR version with the latest release
         id: compare
+        if: steps.scope.outputs.required == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR: ${{ github.event.pull_request.number }}
@@ -126,7 +149,7 @@ jobs:
           echo "bumped=true" >> "$GITHUB_OUTPUT"
 
       - name: Comment on the pull request
-        if: steps.compare.outputs.bumped != 'true'
+        if: steps.scope.outputs.required == 'true' && steps.compare.outputs.bumped != 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR: ${{ github.event.pull_request.number }}
@@ -182,7 +205,7 @@ jobs:
           fi
 
       - name: Remove the guard comment once the version is bumped
-        if: steps.compare.outputs.bumped == 'true'
+        if: steps.scope.outputs.required == 'true' && steps.compare.outputs.bumped == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR: ${{ github.event.pull_request.number }}
@@ -196,7 +219,7 @@ jobs:
           done
 
       - name: Fail the check when the version was not bumped
-        if: steps.compare.outputs.bumped != 'true'
+        if: steps.scope.outputs.required == 'true' && steps.compare.outputs.bumped != 'true'
         run: |
           echo "::error::app/build.gradle.kts must set a versionCode and versionName greater than the latest release, with a unique versionCode across open pull requests."
           exit 1
@@ -204,6 +227,7 @@ jobs:
   guard:
     name: Guard - application source check
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     outputs:
       code_changed: ${{ steps.diff.outputs.code_changed }}
     steps:
@@ -242,7 +266,11 @@ jobs:
             return 1
           }
 
-          changed=$(git diff --name-only "$base" "$head" || true)
+          # Use the three-dot form so the comparison is always against the merge
+          # base. On a pull request this shows only this branch's own changes even
+          # when `main` has moved on; on a push the merge base is simply the
+          # previous commit, so the behaviour is unchanged.
+          changed=$(git diff --name-only "$base...$head" || true)
           echo "Changed files:"
           echo "$changed"
           echo
@@ -255,13 +283,13 @@ jobs:
             fi
 
             # Ignore edits that only move whitespace or blank lines around.
-            if git diff --quiet -w --ignore-blank-lines "$base" "$head" -- "$file"; then
+            if git diff --quiet -w --ignore-blank-lines "$base...$head" -- "$file"; then
               echo "skip (whitespace/formatting only): $file"
               continue
             fi
 
             # Ignore edits that only touch comment lines.
-            edits=$(git diff -w --ignore-blank-lines "$base" "$head" -- "$file" | grep -E '^[+-]' | grep -vE '^(\+\+\+|---)' || true)
+            edits=$(git diff -w --ignore-blank-lines "$base...$head" -- "$file" | grep -E '^[+-]' | grep -vE '^(\+\+\+|---)' || true)
             code=$(printf '%s\n' "$edits" | grep -vE '^[+-][[:space:]]*(//|/\*|\*|<!--|-->)' || true)
             if [ -z "$code" ]; then
               echo "skip (comments only): $file"
@@ -285,6 +313,7 @@ jobs:
     needs: guard
     if: github.event_name == 'push' && needs.guard.outputs.code_changed == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     permissions:
       contents: write
     steps:

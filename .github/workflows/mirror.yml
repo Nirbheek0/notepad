@@ -10,16 +10,24 @@ on:
 permissions:
   contents: read
 
+# Mirror runs push to external hosts, so serialise them: two runs racing the
+# same ref would fight over the remote and could clobber a force-sync.
+concurrency:
+  group: mirror
+  cancel-in-progress: false
+
 jobs:
   smart-mirror:
     name: Mirror to GitLab and Codeberg
     runs-on: ubuntu-latest
+    timeout-minutes: 30
 
     steps:
       - name: Checkout Repository with Full History
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Configure Git Identity
         run: |

@@ -11,7 +11,9 @@ single responsibility, so it is easy to see what runs, when, and why.
 | [`android.yml`](./android.yml) | Build and Sign APK | manual (`workflow_dispatch`) | Builds the unsigned release APK, decodes the keystore from secrets, signs the APK, and uploads it as the `release-apk` artifact. |
 | [`mirror.yml`](./mirror.yml) | Multi-Platform Smart Auto Mirroring | `push` of any branch or tag | Materializes every branch locally, then mirrors all branches and tags to GitLab and Codeberg (force-syncing when a normal push is rejected). |
 | [`universal-pr-check.yml`](./universal-pr-check.yml) | Universal PR Check | `pull_request` (opened, synchronize, reopened) to `dev` | Runs the build, unit tests, lint, detekt and a secret scan as parallel jobs on JDK 21, then posts a single status-table comment on the PR and blocks the merge if any check fails. |
-| [`auto-release.yml`](./auto-release.yml) | Auto Release | `pull_request` / `push` to `main` | Guards on real shipping-file changes with a deep diff check, derives the next version from the latest `v*` tag at release time, and on merge to `main` publishes a GitHub release tagged `v<versionName>` with the signed, renamed APKs and traced release notes. |
+| [`auto-release.yml`](./auto-release.yml) | Auto Release | `pull_request` / `push` to `main` | Requires a version bump only when shipping files change (a deep diff check ignores docs, images, comments and whitespace-only edits), then on merge to `main` publishes a GitHub release tagged `v<versionName>` with the signed, renamed APKs and traced release notes. |
+| [`store-screenshots.yml`](./store-screenshots.yml) | Store Screenshots | manual (`workflow_dispatch`) | Builds a debug APK and captures the store screenshots on a headless Pixel 6 emulator, then uploads them as artifacts. |
+| [`pr-review-commands.yml`](./pr-review-commands.yml) | PR Review Commands | `issue_comment` (created) | Turns `/review`, `/test`, `/force-review`, `/add-approve-user` and `/remove-approve-user` comments on `main` pull requests into an automated review or an allowlist change, after checking the commenter against `.github/pr-reviewers.yml`. |
 
 ## In one line each
 
@@ -20,6 +22,8 @@ single responsibility, so it is easy to see what runs, when, and why.
 - **Mirroring (push) to other hosts (GitLab, Codeberg)** → `mirror.yml`
 - **Per-PR parallel gate with a unified status report** → `universal-pr-check.yml`
 - **Version bump + GitHub release for `main`** → `auto-release.yml`
+- **Store screenshots on an emulator** → `store-screenshots.yml`
+- **Slash-command reviews and reviewer allowlist** → `pr-review-commands.yml`
 
 ## Required repository secrets
 
@@ -87,7 +91,9 @@ changed, and that owns the version number so contributors never touch it.
 base branch is `main`, and `push` events to `main` (i.e. merges). The workflow
 runs on **every** such event — path filtering is done inside the `guard` job, not
 at the trigger, so a docs-only PR never leaves a required status check waiting
-forever. Non-code changes simply skip the release job (see `code_changed` below).
+forever. `code_changed` then drives both checks: a non-shipping change (README,
+`*.md`, `*.txt`, images, `.github/**`, `fastlane/**`, and the like) needs no
+version bump and cuts no release.
 
 **Concurrency.** `group: release-${{ github.ref }}` with
 `cancel-in-progress: false`, so runs for the same ref never overlap.
@@ -104,21 +110,29 @@ release job needs:
   release, while a one-line behaviour change does. When nothing qualifies, the
   release job is skipped.
 
+**Version guard (`version-guard` job).** Runs on `main` pull requests and consumes
+`needs.guard.outputs.code_changed`:
+
+- When a **shipping** file changed, it requires the pull request to raise both
+  `versionCode` (above the latest release) and `versionName` (a greater strict
+  `X.Y.Z`), with a `versionCode` no other open pull request claims. Otherwise it
+  posts one sticky comment (marker `<!-- version-guard -->`) and fails.
+- When **no shipping file** changed — a documentation-only pull request touching
+  `README`, `*.md`, `*.txt`, images or any other non-shipping path — the bump
+  requirement is skipped: the job logs a notice and passes, so documentation can
+  be merged without touching the version.
+
 **Release (`release` job).** On a merge to `main` with code changes it:
 
-1. Reads the app name and takes the latest `v*` tag as the source of truth: the
-   next `versionName` is the tag's version with its patch incremented
-   (`v1.0.11` → `1.0.12`).
-2. Derives the next `versionCode` as one above the highest already recorded — the
-   largest stamped into the previous release's APK names, or the value in
-   `app/build.gradle.kts` when that is higher. The target is never
-   `current + 1`, so nothing keeps incrementing and the workflow is idempotent.
-3. Stamps both into `app/build.gradle.kts` in the runner, so the APK and the tag
-   agree.
-4. Validates the result — `versionName` must match `^[0-9]+\.[0-9]+\.[0-9]+$`
-   and `versionCode` must be a positive integer (`^[1-9][0-9]*$`).
-5. Confirms the `v<versionName>` tag does not already exist on the remote, and
-   fails hard (`exit 1`) rather than silently skipping if it does.
+1. Reads the app name and takes `versionName`/`versionCode` straight from
+   `app/build.gradle.kts`. The version guard already forced the bump at
+   pull-request time, so the committed values are the single source of truth and
+   the release job never rewrites the version.
+2. Validates them — `versionName` must match `^[0-9]+\.[0-9]+\.[0-9]+$` and
+   `versionCode` must be a positive integer (`^[1-9][0-9]*$`).
+3. Confirms the new version is newer than the latest `v*` release and that the
+   `v<versionName>` tag does not already exist on the remote, failing hard
+   (`exit 1`) rather than silently skipping.
 
 It then resolves the release context, builds the signed release APK, and:
 
@@ -149,8 +163,8 @@ on `push` or `pull_request`.
 
 **What it does.**
 
-1. Checks out the app from `dev` and the automation scripts from the branch the
-   workflow runs on (`scripts/screenshots/`).
+1. Checks out the app from `dev` and the screenshot automation scripts from the
+   `ci/screenshots` branch into `.ci/`.
 2. Builds the debug APK with `./gradlew assembleDebug`.
 3. Boots a headless Pixel 6 emulator (API 34, x86_64, google_apis) with KVM.
 4. Installs the APK, seeds realistic notes through the real UI, and captures a
@@ -190,6 +204,6 @@ on `push` or `pull_request`.
 - The status bar is normalised with Android demo mode (fixed 12:00 clock, full
   battery, full Wi-Fi and cellular) and animations are disabled for stable,
   consistent captures.
-- The app is always checked out from `dev`; the scripts come from the branch the
-  workflow is run on. Re-running the workflow regenerates every screenshot.
+- The app is always checked out from `dev`; the scripts come from the
+  `ci/screenshots` branch. Re-running the workflow regenerates every screenshot.
 - No repository secrets are required, and a run takes roughly 20 minutes.
