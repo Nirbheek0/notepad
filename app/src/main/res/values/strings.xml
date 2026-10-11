@@ -19,4 +19,7 @@
     <string name="version_label">Version %1$s (Kotlin &amp; Compose M3)</string>
     <string name="delete_confirmation_title">Delete Notes</string>
     <string name="delete_confirmation_msg">Are you sure you want to delete the selected notes? This cannot be undone.</string>
+    <string name="widget_title">Tasks</string>
+    <string name="widget_refresh">Refresh tasks</string>
+    <string name="widget_empty">Pin a checklist note to see its tasks here.</string>
 </resources>
