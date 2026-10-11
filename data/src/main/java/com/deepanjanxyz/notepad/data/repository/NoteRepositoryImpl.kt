@@ -118,8 +118,8 @@ class NoteRepositoryImpl(
         Unit
     }
 
-    override suspend fun toggleChecklistItem(noteId: Long, itemIndex: Int) = withContext(ioDispatcher) {
-        noteDao.toggleChecklistItem(noteId, itemIndex)
+    override suspend fun toggleChecklistLine(noteId: Long, lineIndex: Int) = withContext(ioDispatcher) {
+        noteDao.toggleChecklistLine(noteId, lineIndex)
         Unit
     }
 

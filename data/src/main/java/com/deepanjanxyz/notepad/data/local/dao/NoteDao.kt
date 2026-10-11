@@ -7,7 +7,7 @@ import androidx.room.Query
 import androidx.room.Transaction
 import androidx.room.Update
 import com.deepanjanxyz.notepad.data.local.entity.NoteEntity
-import com.deepanjanxyz.notepad.domain.model.ChecklistItem
+import com.deepanjanxyz.notepad.domain.model.toggleChecklistLine
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -49,10 +49,10 @@ interface NoteDao {
     @Update
     suspend fun updateNote(entity: NoteEntity): Int
 
-    @Query("UPDATE notes_table SET IN_TRASH = 1, UPDATED_AT = :trashedAt WHERE ID = :id")
+    @Query("UPDATE notes_table SET IN_TRASH = 1, TRASHED_AT = :trashedAt WHERE ID = :id")
     suspend fun moveToTrash(id: Long, trashedAt: Long): Int
 
-    @Query("UPDATE notes_table SET IN_TRASH = 1, UPDATED_AT = :trashedAt WHERE ID IN (:ids)")
+    @Query("UPDATE notes_table SET IN_TRASH = 1, TRASHED_AT = :trashedAt WHERE ID IN (:ids)")
     suspend fun moveNotesToTrash(ids: List<Long>, trashedAt: Long): Int
 
     @Query("UPDATE notes_table SET IN_TRASH = 0 WHERE ID = :id")
@@ -85,11 +85,11 @@ interface NoteDao {
     /**
      * Drops trashed notes whose keep-window has passed.
      *
-     * A trashed note records when it was trashed in UPDATED_AT - a column only
-     * used for sorting inside the trash - so the purge needs no extra column and
-     * no schema migration that could strand an existing install.
+     * Only notes with a real trash timestamp are considered: a row whose
+     * TRASHED_AT is still 0 was never trashed by this version, so its fate in
+     * the trash is unknown and it is left alone rather than deleted.
      */
-    @Query("DELETE FROM notes_table WHERE IN_TRASH = 1 AND UPDATED_AT <= :cutoff")
+    @Query("DELETE FROM notes_table WHERE IN_TRASH = 1 AND TRASHED_AT > 0 AND TRASHED_AT <= :cutoff")
     suspend fun purgeTrashOlderThan(cutoff: Long): Int
 
     @Query("UPDATE notes_table SET PINNED = :isPinned WHERE ID = :id")
@@ -99,22 +99,27 @@ interface NoteDao {
     suspend fun updateReminderTime(id: Long, reminderTime: Long?): Int
 
     /**
-     * Flips one checklist item on a note.
+     * Flips one checklist line on a note.
      *
-     * The read, the edit and the write all happen inside a single transaction, so
-     * two rapid taps (or a toggle racing a save from the app) cannot clobber each
-     * other by both starting from the same stale copy of the content.
+     * Only the tapped line is rewritten, so ordinary text, blank lines and the
+     * rest of the formatting come back untouched. The read, the edit and the
+     * write happen inside a single transaction, so two rapid taps (or a toggle
+     * racing a save from the app) cannot clobber each other.
      */
     @Transaction
-    suspend fun toggleChecklistItem(id: Long, itemIndex: Int): Boolean {
+    suspend fun toggleChecklistLine(id: Long, lineIndex: Int): Boolean {
         val entity = getNoteById(id)
-        val items = entity?.let { ChecklistItem.parseList(it.content).toMutableList() }
-        if (entity == null || items == null || itemIndex !in items.indices) {
+        val lines = entity?.let { it.content.split("\n").toMutableList() }
+        val toggled = if (lines != null && lineIndex in lines.indices) {
+            lines[lineIndex].toggleChecklistLine()
+        } else {
+            null
+        }
+        if (entity == null || lines == null || toggled == null) {
             return false
         }
-        val item = items[itemIndex]
-        items[itemIndex] = item.copy(isChecked = !item.isChecked)
-        updateNote(entity.copy(content = ChecklistItem.serializeList(items)))
+        lines[lineIndex] = toggled
+        updateNote(entity.copy(content = lines.joinToString("\n")))
         return true
     }
 

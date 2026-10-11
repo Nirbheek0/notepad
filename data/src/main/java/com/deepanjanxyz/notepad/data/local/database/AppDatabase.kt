@@ -13,7 +13,7 @@ import com.deepanjanxyz.notepad.data.local.entity.NoteEntity
 
 @Database(
     entities = [NoteEntity::class, LabelEntity::class],
-    version = 6,
+    version = 7,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -88,6 +88,26 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * Adds the real trash timestamp behind the retention window.
+         *
+         * Notes already sitting in the trash have no known trash time, so they
+         * are stamped with the moment of the upgrade instead of their last edit.
+         * That gives them a full retention window rather than deleting them on
+         * the first launch after updating.
+         */
+        private val MIGRATION_6_7 = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "ALTER TABLE `notes_table` ADD COLUMN `TRASHED_AT` INTEGER NOT NULL DEFAULT 0"
+                )
+                db.execSQL(
+                    "UPDATE `notes_table` SET `TRASHED_AT` = " +
+                        "CAST(strftime('%s','now') AS INTEGER) * 1000 WHERE `IN_TRASH` = 1"
+                )
+            }
+        }
+
         @Volatile
         private var INSTANCE: AppDatabase? = null
 
@@ -104,7 +124,7 @@ abstract class AppDatabase : RoomDatabase() {
                     // by MIGRATION_1_5, and exported schemas (see the
                     // room.schemaLocation argument) make it possible to author a
                     // further Migration for any future version bump.
-                    .addMigrations(MIGRATION_1_5, MIGRATION_5_6)
+                    .addMigrations(MIGRATION_1_5, MIGRATION_5_6, MIGRATION_6_7)
                     .build()
                 INSTANCE = instance
                 instance

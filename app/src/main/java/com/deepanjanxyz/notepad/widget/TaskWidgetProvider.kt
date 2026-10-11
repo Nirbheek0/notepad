@@ -50,12 +50,12 @@ class TaskWidgetProvider : AppWidgetProvider() {
         }
     }
 
-    private fun toggleItem(context: Context, noteId: Long, itemIndex: Int) {
+    private fun toggleItem(context: Context, noteId: Long, lineIndex: Int) {
         val appContext = context.applicationContext
         CoroutineScope(Dispatchers.IO).launch {
-            // The repository flips the item inside a database transaction, so a
+            // The repository flips the line inside a database transaction, so a
             // burst of taps cannot lose an update.
-            NoteRepositoryProvider.create(appContext).toggleChecklistItem(noteId, itemIndex)
+            NoteRepositoryProvider.create(appContext).toggleChecklistLine(noteId, lineIndex)
             renderAll(appContext)
         }
     }

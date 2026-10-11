@@ -35,7 +35,7 @@ private class TaskWidgetFactory(private val context: Context) : RemoteViewsServi
 
     override fun getViewAt(position: Int): RemoteViews = when (val row = rows[position]) {
         is WidgetRow.Group -> buildGroupViews(context, row.note)
-        is WidgetRow.Item -> buildItemViews(context, row.note, row.index, row.item)
+        is WidgetRow.Item -> buildItemViews(context, row.note, row.task)
     }
 
     override fun getLoadingView(): RemoteViews? = null

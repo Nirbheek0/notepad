@@ -7,53 +7,59 @@ import android.text.style.StrikethroughSpan
 import android.widget.RemoteViews
 import androidx.compose.ui.graphics.toArgb
 import com.deepanjanxyz.notepad.R
-import com.deepanjanxyz.notepad.domain.model.ChecklistItem
 import com.deepanjanxyz.notepad.domain.model.Note
+import com.deepanjanxyz.notepad.domain.model.checklistLineText
+import com.deepanjanxyz.notepad.domain.model.isChecklistLine
+import com.deepanjanxyz.notepad.domain.model.isChecklistLineChecked
 import com.deepanjanxyz.notepad.domain.repository.NoteRepository
 import com.deepanjanxyz.notepad.ui.theme.NoteColorOptions
 
-/** A checklist note together with the items parsed out of it. */
-internal data class WidgetTaskGroup(val note: Note, val items: List<ChecklistItem>)
+/** One checklist line of a note, remembering the line it came from. */
+internal data class WidgetTask(val lineIndex: Int, val text: String, val isChecked: Boolean)
 
-/** One row of the widget list: either a note header or one of its items. */
+/** A checklist note together with the lines it contributes to the widget. */
+internal data class WidgetTaskGroup(val note: Note, val tasks: List<WidgetTask>)
+
+/** One row of the widget list: either a note header or one of its tasks. */
 internal sealed interface WidgetRow {
     data class Group(val note: Note) : WidgetRow
-    data class Item(val note: Note, val index: Int, val item: ChecklistItem) : WidgetRow
+    data class Item(val note: Note, val task: WidgetTask) : WidgetRow
 }
 
-/** Checklist line prefixes, matching the format the editor writes and reads. */
-private const val CHECKLIST_UNCHECKED_PREFIX = "[ ] "
-private const val CHECKLIST_CHECKED_PREFIX = "[x] "
 private const val UNTITLED_NOTE = "Untitled Note"
 
 /**
- * True when the note actually holds checklist lines - the same test the editor
- * uses before it treats a note as a checklist. Without it a plain text note
- * would be listed as a task list, and ticking an item would rewrite its lines.
+ * The checklist lines of a note, each remembering the line it came from.
+ *
+ * Only lines that already carry a checkbox are listed, and a tap flips just that
+ * line's checkbox - so ordinary text, blank lines and the rest of the note are
+ * never rewritten by the widget.
  */
-internal fun Note.hasChecklist(): Boolean = content.lines().any { line ->
-    line.startsWith(CHECKLIST_UNCHECKED_PREFIX) ||
-        line.startsWith(CHECKLIST_CHECKED_PREFIX, ignoreCase = true)
-}
+private fun checklistTasks(content: String): List<WidgetTask> =
+    content.split("\n").mapIndexedNotNull { index, line ->
+        if (line.isChecklistLine()) {
+            WidgetTask(index, line.checklistLineText(), line.isChecklistLineChecked())
+        } else {
+            null
+        }
+    }
 
 /**
- * The pinned checklist notes, newest first, each with its parsed items.
+ * The pinned checklist notes, newest first, each with the lines it contributes.
  *
  * The repository hands back only the rows that can match, so a widget refresh
  * reads a handful of notes instead of the whole database.
  */
 internal suspend fun loadTaskGroups(repository: NoteRepository): List<WidgetTaskGroup> =
     repository.getPinnedChecklistNotes()
-        .filter { it.hasChecklist() }
-        .map { note -> WidgetTaskGroup(note, ChecklistItem.parseList(note.content)) }
+        .map { note -> WidgetTaskGroup(note, checklistTasks(note.content)) }
+        .filter { it.tasks.isNotEmpty() }
 
 /** Flattens the groups into the flat row list the widget's ListView renders. */
 internal fun flattenRows(groups: List<WidgetTaskGroup>): List<WidgetRow> = buildList {
     for (group in groups) {
         add(WidgetRow.Group(group.note))
-        group.items.forEachIndexed { index, item ->
-            add(WidgetRow.Item(group.note, index, item))
-        }
+        group.tasks.forEach { task -> add(WidgetRow.Item(group.note, task)) }
     }
 }
 
@@ -65,23 +71,18 @@ internal fun buildGroupViews(context: Context, note: Note): RemoteViews {
     return header
 }
 
-/** One task row: the check indicator plus the item text. */
-internal fun buildItemViews(
-    context: Context,
-    note: Note,
-    itemIndex: Int,
-    item: ChecklistItem
-): RemoteViews {
+/** One task row: the check indicator plus the line's text. */
+internal fun buildItemViews(context: Context, note: Note, task: WidgetTask): RemoteViews {
     val row = RemoteViews(context.packageName, R.layout.widget_task_item)
     row.setImageViewResource(
         R.id.widget_item_check,
-        if (item.isChecked) R.drawable.ic_widget_check_done else R.drawable.ic_widget_check_todo
+        if (task.isChecked) R.drawable.ic_widget_check_done else R.drawable.ic_widget_check_todo
     )
-    row.setTextViewText(R.id.widget_item_text, itemText(item))
+    row.setTextViewText(R.id.widget_item_text, itemText(task))
     row.setTextColor(
         R.id.widget_item_text,
         context.getColor(
-            if (item.isChecked) {
+            if (task.isChecked) {
                 R.color.widget_on_surface_variant
             } else {
                 R.color.widget_on_surface
@@ -90,19 +91,19 @@ internal fun buildItemViews(
     )
     row.setOnClickFillInIntent(
         R.id.widget_item_root,
-        TaskWidgetProvider.toggleFillInIntent(note.id, itemIndex)
+        TaskWidgetProvider.toggleFillInIntent(note.id, task.lineIndex)
     )
     return row
 }
 
-/** Completed items are struck through, the way a checklist reads at a glance. */
-private fun itemText(item: ChecklistItem): CharSequence =
-    if (item.isChecked) {
-        SpannableString(item.text).apply {
+/** Completed lines are struck through, the way a checklist reads at a glance. */
+private fun itemText(task: WidgetTask): CharSequence =
+    if (task.isChecked) {
+        SpannableString(task.text).apply {
             setSpan(StrikethroughSpan(), 0, length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
         }
     } else {
-        item.text
+        task.text
     }
 
 /**
