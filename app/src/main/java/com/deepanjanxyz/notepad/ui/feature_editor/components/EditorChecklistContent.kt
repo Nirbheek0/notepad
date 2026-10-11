@@ -160,6 +160,7 @@ fun EditorChecklistContent(
     }
 }
 
+/** One checklist line: its checkbox, its editable text and its remove button. */
 @Composable
 private fun ChecklistTaskRow(
     itemId: String,
@@ -177,30 +178,12 @@ private fun ChecklistTaskRow(
             .padding(vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Box(
-            modifier = Modifier
-                .size(20.dp)
-                .clip(RoundedCornerShape(3.dp))
-                .then(
-                    if (isChecked) {
-                        Modifier.background(amberAccent)
-                    } else {
-                        Modifier.border(1.8.dp, Color(0xFF8E9099), RoundedCornerShape(3.dp))
-                    }
-                )
-                .clickable { onCheckChange(itemId, !isChecked) }
-                .testTag(if (isChecked) "checkbox_completed_$itemId" else "checkbox_$itemId"),
-            contentAlignment = Alignment.Center
-        ) {
-            if (isChecked) {
-                Icon(
-                    imageVector = Icons.Default.Check,
-                    contentDescription = "Completed",
-                    tint = Color(0xFF1B1B1F),
-                    modifier = Modifier.size(15.dp)
-                )
-            }
-        }
+        ChecklistCheckbox(
+            itemId = itemId,
+            isChecked = isChecked,
+            amberAccent = amberAccent,
+            onCheckChange = onCheckChange
+        )
         BasicTextField(
             value = text,
             onValueChange = { onTextChange(itemId, it) },
@@ -223,26 +206,72 @@ private fun ChecklistTaskRow(
                     }
                 )
         )
-        ActionTooltip("Remove item") {
-            IconButton(
-                onClick = { onDelete(itemId) },
-                modifier = Modifier
-                    .size(36.dp)
-                    .testTag(
-                        if (isChecked) {
-                            "remove_completed_item_$itemId"
-                        } else {
-                            "remove_item_$itemId"
-                        }
-                    )
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Close,
-                    contentDescription = "Remove item",
-                    tint = Color(0xFF6E7179),
-                    modifier = Modifier.size(18.dp)
+        ChecklistRemoveButton(
+            itemId = itemId,
+            isChecked = isChecked,
+            onDelete = onDelete
+        )
+    }
+}
+
+@Composable
+private fun ChecklistCheckbox(
+    itemId: String,
+    isChecked: Boolean,
+    amberAccent: Color,
+    onCheckChange: (String, Boolean) -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .size(20.dp)
+            .clip(RoundedCornerShape(3.dp))
+            .then(
+                if (isChecked) {
+                    Modifier.background(amberAccent)
+                } else {
+                    Modifier.border(1.8.dp, Color(0xFF8E9099), RoundedCornerShape(3.dp))
+                }
+            )
+            .clickable { onCheckChange(itemId, !isChecked) }
+            .testTag(if (isChecked) "checkbox_completed_$itemId" else "checkbox_$itemId"),
+        contentAlignment = Alignment.Center
+    ) {
+        if (isChecked) {
+            Icon(
+                imageVector = Icons.Default.Check,
+                contentDescription = "Completed",
+                tint = Color(0xFF1B1B1F),
+                modifier = Modifier.size(15.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun ChecklistRemoveButton(
+    itemId: String,
+    isChecked: Boolean,
+    onDelete: (String) -> Unit
+) {
+    ActionTooltip("Remove item") {
+        IconButton(
+            onClick = { onDelete(itemId) },
+            modifier = Modifier
+                .size(36.dp)
+                .testTag(
+                    if (isChecked) {
+                        "remove_completed_item_$itemId"
+                    } else {
+                        "remove_item_$itemId"
+                    }
                 )
-            }
+        ) {
+            Icon(
+                imageVector = Icons.Default.Close,
+                contentDescription = "Remove item",
+                tint = Color(0xFF6E7179),
+                modifier = Modifier.size(18.dp)
+            )
         }
     }
 }
