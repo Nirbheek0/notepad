@@ -33,10 +33,7 @@ private class TaskWidgetFactory(private val context: Context) : RemoteViewsServi
 
     override fun getCount(): Int = rows.size
 
-    override fun getViewAt(position: Int): RemoteViews = when (val row = rows[position]) {
-        is WidgetRow.Group -> buildGroupViews(context, row.note)
-        is WidgetRow.Item -> buildItemViews(context, row.note, row.task)
-    }
+    override fun getViewAt(position: Int): RemoteViews = buildRowViews(context, rows[position])
 
     override fun getLoadingView(): RemoteViews? = null
 
@@ -48,8 +45,7 @@ private class TaskWidgetFactory(private val context: Context) : RemoteViewsServi
 
     private companion object {
         /**
-         * The factory interface has no per-position view type, so every row is
-         * reported as the same type and [getViewAt] supplies the right layout.
+         * Every row shares one layout, so the whole list is a single view type.
          */
         const val VIEW_TYPE_COUNT = 1
     }

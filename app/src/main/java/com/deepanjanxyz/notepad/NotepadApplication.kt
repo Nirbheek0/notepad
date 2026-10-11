@@ -1,8 +1,6 @@
 package com.deepanjanxyz.notepad
 
-import android.app.Activity
 import android.app.Application
-import android.os.Bundle
 import com.deepanjanxyz.notepad.data.NoteRepositoryProvider
 import com.deepanjanxyz.notepad.data.SettingsRepositoryProvider
 import com.deepanjanxyz.notepad.domain.repository.NoteRepository
@@ -33,37 +31,43 @@ import com.deepanjanxyz.notepad.domain.usecase.settings.SettingsUseCases
 import com.deepanjanxyz.notepad.widget.TaskWidgetProvider
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.conflate
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
 
 class NotepadApplication : Application() {
     val container: AppContainer by lazy { AppContainer(this) }
 
+    private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
     override fun onCreate() {
         super.onCreate()
-        // The home-screen widget mirrors the notes, so it is rebuilt whenever the
-        // app leaves the foreground - the moment a pin, unpin or edit has just
-        // finished and the user is about to look at the home screen.
-        registerActivityLifecycleCallbacks(object : Application.ActivityLifecycleCallbacks {
-            override fun onActivityStopped(activity: Activity) {
-                TaskWidgetProvider.refresh(activity.applicationContext)
-            }
 
-            override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) = Unit
-
-            override fun onActivityStarted(activity: Activity) = Unit
-
-            override fun onActivityResumed(activity: Activity) = Unit
-
-            override fun onActivityPaused(activity: Activity) = Unit
-
-            override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) = Unit
-
-            override fun onActivityDestroyed(activity: Activity) = Unit
-        })
+        // The home-screen widget mirrors the pinned checklist notes, so it is
+        // rebuilt whenever the active notes change - a pin, unpin, edit, delete
+        // or archive is on the home screen without waiting for the app to close.
+        // A short pause after each change collapses a burst of edits into one
+        // rebuild.
+        appScope.launch {
+            container.noteUseCases.getNotes()
+                .drop(1)
+                .conflate()
+                .collect {
+                    delay(WIDGET_SYNC_DEBOUNCE_MS)
+                    TaskWidgetProvider.refresh(this@NotepadApplication)
+                }
+        }
 
         // Deleted notes are kept for a fixed window and then dropped, so the
         // purge runs once per launch rather than on every trash action.
         CoroutineScope(Dispatchers.IO).launch { container.noteUseCases.purgeExpiredTrash() }
+    }
+
+    private companion object {
+        /** How long to wait for further note changes before rebuilding the widget. */
+        const val WIDGET_SYNC_DEBOUNCE_MS = 400L
     }
 }
 

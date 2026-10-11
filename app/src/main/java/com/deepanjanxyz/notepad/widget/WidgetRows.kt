@@ -4,6 +4,7 @@ import android.content.Context
 import android.text.SpannableString
 import android.text.Spanned
 import android.text.style.StrikethroughSpan
+import android.view.View
 import android.widget.RemoteViews
 import androidx.compose.ui.graphics.toArgb
 import com.deepanjanxyz.notepad.R
@@ -63,37 +64,51 @@ internal fun flattenRows(groups: List<WidgetTaskGroup>): List<WidgetRow> = build
     }
 }
 
-/** Header row: a dot in the note's own colour plus its title. */
-internal fun buildGroupViews(context: Context, note: Note): RemoteViews {
-    val header = RemoteViews(context.packageName, R.layout.widget_task_group)
-    header.setTextViewText(R.id.widget_group_title, note.title.ifBlank { UNTITLED_NOTE })
-    header.setInt(R.id.widget_group_dot, "setColorFilter", noteAccentColor(context, note))
-    return header
-}
-
-/** One task row: the check indicator plus the line's text. */
-internal fun buildItemViews(context: Context, note: Note, task: WidgetTask): RemoteViews {
-    val row = RemoteViews(context.packageName, R.layout.widget_task_item)
-    row.setImageViewResource(
-        R.id.widget_item_check,
-        if (task.isChecked) R.drawable.ic_widget_check_done else R.drawable.ic_widget_check_todo
-    )
-    row.setTextViewText(R.id.widget_item_text, itemText(task))
-    row.setTextColor(
-        R.id.widget_item_text,
-        context.getColor(
-            if (task.isChecked) {
-                R.color.widget_on_surface_variant
-            } else {
-                R.color.widget_on_surface
-            }
-        )
-    )
-    row.setOnClickFillInIntent(
-        R.id.widget_item_root,
-        TaskWidgetProvider.toggleFillInIntent(note.id, task.lineIndex)
-    )
-    return row
+/**
+ * Builds one row.
+ *
+ * Headers and tasks share a single layout and the unused half is hidden, because
+ * the widget host caches one view per view type and a list may only report a
+ * single type.
+ */
+internal fun buildRowViews(context: Context, row: WidgetRow): RemoteViews {
+    val views = RemoteViews(context.packageName, R.layout.widget_task_row)
+    when (row) {
+        is WidgetRow.Group -> {
+            views.setViewVisibility(R.id.widget_row_header, View.VISIBLE)
+            views.setViewVisibility(R.id.widget_row_task, View.GONE)
+            views.setTextViewText(R.id.widget_group_title, row.note.title.ifBlank { UNTITLED_NOTE })
+            views.setInt(R.id.widget_group_dot, "setColorFilter", noteAccentColor(context, row.note))
+        }
+        is WidgetRow.Item -> {
+            views.setViewVisibility(R.id.widget_row_header, View.GONE)
+            views.setViewVisibility(R.id.widget_row_task, View.VISIBLE)
+            views.setImageViewResource(
+                R.id.widget_item_check,
+                if (row.task.isChecked) {
+                    R.drawable.ic_widget_check_done
+                } else {
+                    R.drawable.ic_widget_check_todo
+                }
+            )
+            views.setTextViewText(R.id.widget_item_text, itemText(row.task))
+            views.setTextColor(
+                R.id.widget_item_text,
+                context.getColor(
+                    if (row.task.isChecked) {
+                        R.color.widget_on_surface_variant
+                    } else {
+                        R.color.widget_on_surface
+                    }
+                )
+            )
+            views.setOnClickFillInIntent(
+                R.id.widget_row_root,
+                TaskWidgetProvider.toggleFillInIntent(row.note.id, row.task.lineIndex)
+            )
+        }
+    }
+    return views
 }
 
 /** Completed lines are struck through, the way a checklist reads at a glance. */

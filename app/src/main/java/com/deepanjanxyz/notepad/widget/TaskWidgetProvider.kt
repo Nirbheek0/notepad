@@ -93,10 +93,12 @@ class TaskWidgetProvider : AppWidgetProvider() {
         private fun buildViews(context: Context, appWidgetId: Int): RemoteViews {
             val views = RemoteViews(context.packageName, R.layout.widget_tasks)
 
-            // Each placed widget needs its own adapter, so the service intent
-            // carries a unique data URI alongside the widget id.
+            // The adapter is keyed by this intent's data URI, so the id is part
+            // of it - otherwise every placed widget would share one adapter.
             val serviceIntent = Intent(context, TaskWidgetService::class.java).apply {
-                data = Uri.parse(toUri(Intent.URI_INTENT_SCHEME))
+                data = Uri.parse(toUri(Intent.URI_INTENT_SCHEME)).buildUpon()
+                    .appendQueryParameter("widgetId", appWidgetId.toString())
+                    .build()
                 putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
             }
             views.setRemoteAdapter(R.id.widget_list, serviceIntent)
