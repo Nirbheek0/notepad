@@ -63,11 +63,11 @@ class TaskWidgetProvider : AppWidgetProvider() {
     companion object {
         private const val ACTION_TOGGLE_ITEM = "com.deepanjanxyz.notepad.widget.ACTION_TOGGLE_ITEM"
         private const val ACTION_REFRESH = "com.deepanjanxyz.notepad.widget.ACTION_REFRESH"
-        private const val EXTRA_NOTE_ID = "extra_note_id"
-        private const val EXTRA_ITEM_INDEX = "extra_item_index"
+        internal const val EXTRA_NOTE_ID = "extra_note_id"
+        internal const val EXTRA_ITEM_INDEX = "extra_item_index"
         private const val INVALID_ID = -1L
         private const val INVALID_INDEX = -1
-        private const val REQUEST_CODE_NOTE_STRIDE = 1000
+        private const val REQUEST_CODE_TOGGLE_TEMPLATE = 1000
         private const val REQUEST_CODE_REFRESH = 1
         private const val REQUEST_CODE_OPEN_APP = 0
 
@@ -101,6 +101,9 @@ class TaskWidgetProvider : AppWidgetProvider() {
             }
             views.setRemoteAdapter(R.id.widget_list, serviceIntent)
             views.setEmptyView(R.id.widget_list, R.id.widget_empty)
+            // A row inside a collection cannot carry its own PendingIntent, so
+            // the list holds the template and each row fills in which item it is.
+            views.setPendingIntentTemplate(R.id.widget_list, toggleTemplateIntent(context))
 
             views.setOnClickPendingIntent(R.id.widget_title, openAppIntent(context))
             views.setOnClickPendingIntent(R.id.widget_refresh, refreshIntent(context))
@@ -113,14 +116,17 @@ class TaskWidgetProvider : AppWidgetProvider() {
             return PendingIntent.getActivity(context, REQUEST_CODE_OPEN_APP, intent, pendingIntentFlags)
         }
 
-        internal fun toggleIntent(context: Context, noteId: Long, itemIndex: Int): PendingIntent {
+        /** The extras a row fills in so the template knows which item was tapped. */
+        internal fun toggleFillInIntent(noteId: Long, itemIndex: Int): Intent = Intent().apply {
+            putExtra(EXTRA_NOTE_ID, noteId)
+            putExtra(EXTRA_ITEM_INDEX, itemIndex)
+        }
+
+        private fun toggleTemplateIntent(context: Context): PendingIntent {
             val intent = Intent(context, TaskWidgetProvider::class.java).apply {
                 action = ACTION_TOGGLE_ITEM
-                putExtra(EXTRA_NOTE_ID, noteId)
-                putExtra(EXTRA_ITEM_INDEX, itemIndex)
             }
-            val requestCode = noteId.toInt() * REQUEST_CODE_NOTE_STRIDE + itemIndex
-            return PendingIntent.getBroadcast(context, requestCode, intent, pendingIntentFlags)
+            return PendingIntent.getBroadcast(context, REQUEST_CODE_TOGGLE_TEMPLATE, intent, pendingIntentFlags)
         }
 
         private fun refreshIntent(context: Context): PendingIntent {

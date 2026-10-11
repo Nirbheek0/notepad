@@ -88,9 +88,9 @@ internal fun buildItemViews(
             }
         )
     )
-    row.setOnClickPendingIntent(
+    row.setOnClickFillInIntent(
         R.id.widget_item_root,
-        TaskWidgetProvider.toggleIntent(context, note.id, itemIndex)
+        TaskWidgetProvider.toggleFillInIntent(note.id, itemIndex)
     )
     return row
 }
