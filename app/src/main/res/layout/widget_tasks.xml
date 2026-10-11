@@ -34,11 +34,14 @@
             android:src="@drawable/ic_widget_refresh" />
     </LinearLayout>
 
-    <LinearLayout
-        android:id="@+id/widget_items"
+    <ListView
+        android:id="@+id/widget_list"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="vertical" />
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:divider="@null"
+        android:dividerHeight="0dp"
+        android:scrollbars="vertical" />
 
     <TextView
         android:id="@+id/widget_empty"

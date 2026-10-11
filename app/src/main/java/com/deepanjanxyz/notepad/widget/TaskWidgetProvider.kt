@@ -6,40 +6,14 @@ import android.appwidget.AppWidgetProvider
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
-import android.text.SpannableString
-import android.text.Spanned
-import android.text.style.StrikethroughSpan
-import android.view.View
+import android.net.Uri
 import android.widget.RemoteViews
-import androidx.compose.ui.graphics.toArgb
 import com.deepanjanxyz.notepad.MainActivity
 import com.deepanjanxyz.notepad.R
 import com.deepanjanxyz.notepad.data.NoteRepositoryProvider
-import com.deepanjanxyz.notepad.domain.model.ChecklistItem
-import com.deepanjanxyz.notepad.domain.model.Note
-import com.deepanjanxyz.notepad.domain.repository.NoteRepository
-import com.deepanjanxyz.notepad.ui.theme.NoteColorOptions
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
-
-/** A checklist note together with the items parsed out of it. */
-private data class WidgetTaskGroup(val note: Note, val items: List<ChecklistItem>)
-
-/** Checklist line prefixes, matching the format the editor writes and reads. */
-private const val CHECKLIST_UNCHECKED_PREFIX = "[ ] "
-private const val CHECKLIST_CHECKED_PREFIX = "[x] "
-
-/**
- * True when the note actually holds checklist lines - the same test the editor
- * uses before it treats a note as a checklist. Without it a plain text note
- * would be listed as a task list, and ticking an item would rewrite its lines.
- */
-private fun Note.hasChecklist(): Boolean = content.lines().any { line ->
-    line.startsWith(CHECKLIST_UNCHECKED_PREFIX) ||
-        line.startsWith(CHECKLIST_CHECKED_PREFIX, ignoreCase = true)
-}
 
 /**
  * Home-screen widget that surfaces the checklist items of every pinned note, so
@@ -48,6 +22,9 @@ private fun Note.hasChecklist(): Boolean = content.lines().any { line ->
  * The pin is the control: pinning a checklist note puts it on the widget and
  * unpinning removes it, which reuses the gesture users already know instead of
  * adding a second place to manage the same thing.
+ *
+ * The rows come from [TaskWidgetService], so however many tasks are pinned the
+ * list scrolls instead of being cut off at the widget's edge.
  */
 class TaskWidgetProvider : AppWidgetProvider() {
 
@@ -90,7 +67,6 @@ class TaskWidgetProvider : AppWidgetProvider() {
         private const val EXTRA_ITEM_INDEX = "extra_item_index"
         private const val INVALID_ID = -1L
         private const val INVALID_INDEX = -1
-        private const val UNTITLED_NOTE = "Untitled Note"
         private const val REQUEST_CODE_NOTE_STRIDE = 1000
         private const val REQUEST_CODE_REFRESH = 1
         private const val REQUEST_CODE_OPEN_APP = 0
@@ -104,103 +80,31 @@ class TaskWidgetProvider : AppWidgetProvider() {
             CoroutineScope(Dispatchers.IO).launch { renderAll(appContext) }
         }
 
-        private suspend fun renderAll(context: Context) {
+        private fun renderAll(context: Context) {
             val manager = AppWidgetManager.getInstance(context)
             val component = ComponentName(context, TaskWidgetProvider::class.java)
-            val ids = manager.getAppWidgetIds(component)
-            if (ids.isEmpty()) return
-
-            val groups = taskGroups(NoteRepositoryProvider.create(context))
-            for (id in ids) {
-                manager.updateAppWidget(id, buildViews(context, groups))
+            for (id in manager.getAppWidgetIds(component)) {
+                manager.updateAppWidget(id, buildViews(context, id))
+                // The rows live in the service, so ask it to reload them.
+                manager.notifyAppWidgetViewDataChanged(id, R.id.widget_list)
             }
         }
 
-        private suspend fun taskGroups(repository: NoteRepository): List<WidgetTaskGroup> =
-            repository.getAllNotes().first()
-                .filter { it.isPinned && it.hasChecklist() }
-                .map { note -> WidgetTaskGroup(note, ChecklistItem.parseList(note.content)) }
-
-        private fun buildViews(context: Context, groups: List<WidgetTaskGroup>): RemoteViews {
+        private fun buildViews(context: Context, appWidgetId: Int): RemoteViews {
             val views = RemoteViews(context.packageName, R.layout.widget_tasks)
-            views.removeAllViews(R.id.widget_items)
 
-            if (groups.isEmpty()) {
-                views.setViewVisibility(R.id.widget_empty, View.VISIBLE)
-            } else {
-                views.setViewVisibility(R.id.widget_empty, View.GONE)
-                for (group in groups) {
-                    views.addView(R.id.widget_items, buildGroupViews(context, group.note))
-                    group.items.forEachIndexed { index, item ->
-                        views.addView(
-                            R.id.widget_items,
-                            buildItemViews(context, group.note, index, item)
-                        )
-                    }
-                }
+            // Each placed widget needs its own adapter, so the service intent
+            // carries a unique data URI alongside the widget id.
+            val serviceIntent = Intent(context, TaskWidgetService::class.java).apply {
+                data = Uri.parse(toUri(Intent.URI_INTENT_SCHEME))
+                putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
             }
+            views.setRemoteAdapter(R.id.widget_list, serviceIntent)
+            views.setEmptyView(R.id.widget_list, R.id.widget_empty)
 
             views.setOnClickPendingIntent(R.id.widget_title, openAppIntent(context))
             views.setOnClickPendingIntent(R.id.widget_refresh, refreshIntent(context))
             return views
-        }
-
-        private fun buildGroupViews(context: Context, note: Note): RemoteViews {
-            val header = RemoteViews(context.packageName, R.layout.widget_task_group)
-            header.setTextViewText(R.id.widget_group_title, note.title.ifBlank { UNTITLED_NOTE })
-            header.setInt(R.id.widget_group_dot, "setColorFilter", noteAccentColor(context, note))
-            return header
-        }
-
-        /**
-         * The dot mirrors the note's own colour so a group is recognisable at a
-         * glance, exactly as the note card is in the app. Notes left on the
-         * default colour fall back to the widget accent.
-         */
-        private fun noteAccentColor(context: Context, note: Note): Int =
-            if (note.colorIndex in 1 until NoteColorOptions.size) {
-                NoteColorOptions[note.colorIndex].toArgb()
-            } else {
-                context.getColor(R.color.widget_accent)
-            }
-
-        /** Completed items are struck through, the way a checklist reads at a glance. */
-        private fun itemText(item: ChecklistItem): CharSequence =
-            if (item.isChecked) {
-                SpannableString(item.text).apply {
-                    setSpan(StrikethroughSpan(), 0, length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-                }
-            } else {
-                item.text
-            }
-
-        private fun buildItemViews(
-            context: Context,
-            note: Note,
-            itemIndex: Int,
-            item: ChecklistItem
-        ): RemoteViews {
-            val row = RemoteViews(context.packageName, R.layout.widget_task_item)
-            row.setImageViewResource(
-                R.id.widget_item_check,
-                if (item.isChecked) R.drawable.ic_widget_check_done else R.drawable.ic_widget_check_todo
-            )
-            row.setTextViewText(R.id.widget_item_text, itemText(item))
-            row.setTextColor(
-                R.id.widget_item_text,
-                context.getColor(
-                    if (item.isChecked) {
-                        R.color.widget_on_surface_variant
-                    } else {
-                        R.color.widget_on_surface
-                    }
-                )
-            )
-            row.setOnClickPendingIntent(
-                R.id.widget_item_root,
-                toggleIntent(context, note.id, itemIndex)
-            )
-            return row
         }
 
         private fun openAppIntent(context: Context): PendingIntent {
@@ -209,7 +113,7 @@ class TaskWidgetProvider : AppWidgetProvider() {
             return PendingIntent.getActivity(context, REQUEST_CODE_OPEN_APP, intent, pendingIntentFlags)
         }
 
-        private fun toggleIntent(context: Context, noteId: Long, itemIndex: Int): PendingIntent {
+        internal fun toggleIntent(context: Context, noteId: Long, itemIndex: Int): PendingIntent {
             val intent = Intent(context, TaskWidgetProvider::class.java).apply {
                 action = ACTION_TOGGLE_ITEM
                 putExtra(EXTRA_NOTE_ID, noteId)

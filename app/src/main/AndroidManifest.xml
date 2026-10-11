@@ -46,6 +46,13 @@
                 android:name="android.appwidget.provider"
                 android:resource="@xml/task_widget_info" />
         </receiver>
+
+        <!-- Supplies the widget's scrollable list. The BIND_REMOTEVIEWS
+             permission keeps the service private to the app widget host. -->
+        <service
+            android:name=".widget.TaskWidgetService"
+            android:exported="false"
+            android:permission="android.permission.BIND_REMOTEVIEWS" />
     </application>
 
 </manifest>
