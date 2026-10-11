@@ -11,7 +11,6 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ViewList
-import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Search
@@ -149,24 +148,6 @@ fun FloatingSearchBar(
                     .testTag("search_text_field")
             )
 
-            // Clear search text button if active
-            if (query.isNotEmpty()) {
-                ActionTooltip("Clear search text") {
-                    IconButton(
-                        onClick = {
-                            onQueryChange("")
-                        },
-                        modifier = Modifier.testTag("clear_search_button")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Clear,
-                            contentDescription = "Clear search text",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-            }
-
             // Trailing Icon: Layout View Switcher button (Grid / Staggered Grid vs Single Column List)
             ActionTooltip(if (isGridLayout) "Switch to Single Column List" else "Switch to Grid View") {
                 IconButton(
@@ -183,4 +164,3 @@ fun FloatingSearchBar(
         }
     }
 }
-
