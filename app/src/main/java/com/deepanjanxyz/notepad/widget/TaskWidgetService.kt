@@ -37,11 +37,16 @@ private class TaskWidgetFactory(private val context: Context) : RemoteViewsServi
 
     override fun getLoadingView(): RemoteViews? = null
 
-    override fun getViewTypeCount(): Int = WIDGET_ROW_TYPE_COUNT
+    override fun getViewTypeCount(): Int = VIEW_TYPE_COUNT
 
-    override fun getViewType(position: Int): Int = rowViewType(rows[position])
+    override fun getItemId(position: Int): Long = position.toLong()
 
-    override fun getItemId(position: Int): Long = rowStableId(rows[position])
+    override fun hasStableIds(): Boolean = false
 
-    override fun hasStableIds(): Boolean = true
+    private companion object {
+        /**
+         * Every row shares one layout, so the whole list is a single view type.
+         */
+        const val VIEW_TYPE_COUNT = 1
+    }
 }
