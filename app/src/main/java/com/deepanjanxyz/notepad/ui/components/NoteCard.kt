@@ -91,7 +91,11 @@ fun buildHighlightedText(
         return AnnotatedString(text)
     }
 
-    return remember(text, query, colors) {
+    // An empty palette would make the per-keyword colour lookup divide by zero,
+    // so it falls back to the default swatches.
+    val palette = colors.ifEmpty { SearchHighlightColors }
+
+    return remember(text, query, palette) {
         val keywords = query.trim().lowercase(Locale.getDefault())
             .split("\\s+".toRegex())
             .filter { it.isNotBlank() }
@@ -139,7 +143,7 @@ fun buildHighlightedText(
                 if (match.first > cursor) {
                     append(text.substring(cursor, match.first))
                 }
-                val swatch = colors[match.third % colors.size]
+                val swatch = palette[match.third % palette.size]
                 withStyle(
                     SpanStyle(
                         background = swatch,
