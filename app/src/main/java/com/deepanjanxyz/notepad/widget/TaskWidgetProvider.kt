@@ -6,14 +6,19 @@ import android.appwidget.AppWidgetProvider
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.text.SpannableString
+import android.text.Spanned
+import android.text.style.StrikethroughSpan
 import android.view.View
 import android.widget.RemoteViews
+import androidx.compose.ui.graphics.toArgb
 import com.deepanjanxyz.notepad.MainActivity
 import com.deepanjanxyz.notepad.R
 import com.deepanjanxyz.notepad.data.NoteRepositoryProvider
 import com.deepanjanxyz.notepad.domain.model.ChecklistItem
 import com.deepanjanxyz.notepad.domain.model.Note
 import com.deepanjanxyz.notepad.domain.repository.NoteRepository
+import com.deepanjanxyz.notepad.ui.theme.NoteColorOptions
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
@@ -79,6 +84,7 @@ class TaskWidgetProvider : AppWidgetProvider() {
         private const val EXTRA_ITEM_INDEX = "extra_item_index"
         private const val INVALID_ID = -1L
         private const val INVALID_INDEX = -1
+        private const val UNTITLED_NOTE = "Untitled Note"
         private const val REQUEST_CODE_NOTE_STRIDE = 1000
         private const val REQUEST_CODE_REFRESH = 1
         private const val REQUEST_CODE_OPEN_APP = 0
@@ -119,6 +125,7 @@ class TaskWidgetProvider : AppWidgetProvider() {
             } else {
                 views.setViewVisibility(R.id.widget_empty, View.GONE)
                 for (group in groups) {
+                    views.addView(R.id.widget_items, buildGroupViews(context, group.note))
                     group.items.forEachIndexed { index, item ->
                         views.addView(
                             R.id.widget_items,
@@ -133,6 +140,35 @@ class TaskWidgetProvider : AppWidgetProvider() {
             return views
         }
 
+        private fun buildGroupViews(context: Context, note: Note): RemoteViews {
+            val header = RemoteViews(context.packageName, R.layout.widget_task_group)
+            header.setTextViewText(R.id.widget_group_title, note.title.ifBlank { UNTITLED_NOTE })
+            header.setInt(R.id.widget_group_dot, "setColorFilter", noteAccentColor(context, note))
+            return header
+        }
+
+        /**
+         * The dot mirrors the note's own colour so a group is recognisable at a
+         * glance, exactly as the note card is in the app. Notes left on the
+         * default colour fall back to the widget accent.
+         */
+        private fun noteAccentColor(context: Context, note: Note): Int =
+            if (note.colorIndex in 1 until NoteColorOptions.size) {
+                NoteColorOptions[note.colorIndex].toArgb()
+            } else {
+                context.getColor(R.color.widget_accent)
+            }
+
+        /** Completed items are struck through, the way a checklist reads at a glance. */
+        private fun itemText(item: ChecklistItem): CharSequence =
+            if (item.isChecked) {
+                SpannableString(item.text).apply {
+                    setSpan(StrikethroughSpan(), 0, length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                }
+            } else {
+                item.text
+            }
+
         private fun buildItemViews(
             context: Context,
             note: Note,
@@ -144,7 +180,7 @@ class TaskWidgetProvider : AppWidgetProvider() {
                 R.id.widget_item_check,
                 if (item.isChecked) R.drawable.ic_widget_check_done else R.drawable.ic_widget_check_todo
             )
-            row.setTextViewText(R.id.widget_item_text, item.text)
+            row.setTextViewText(R.id.widget_item_text, itemText(item))
             row.setTextColor(
                 R.id.widget_item_text,
                 context.getColor(
