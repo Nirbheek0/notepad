@@ -53,12 +53,12 @@ class NoteRepositoryImpl(
     }
 
     override suspend fun moveToTrash(id: Long) = withContext(ioDispatcher) {
-        noteDao.moveToTrash(id)
+        noteDao.moveToTrash(id, System.currentTimeMillis())
         Unit
     }
 
     override suspend fun moveNotesToTrash(ids: List<Long>) = withContext(ioDispatcher) {
-        noteDao.moveNotesToTrash(ids)
+        noteDao.moveNotesToTrash(ids, System.currentTimeMillis())
         Unit
     }
 
@@ -104,6 +104,12 @@ class NoteRepositoryImpl(
 
     override suspend fun emptyTrash() = withContext(ioDispatcher) {
         noteDao.emptyTrash()
+        Unit
+    }
+
+    override suspend fun purgeExpiredTrash() = withContext(ioDispatcher) {
+        val cutoff = System.currentTimeMillis() - NoteRepository.TRASH_RETENTION_MILLIS
+        noteDao.purgeTrashOlderThan(cutoff)
         Unit
     }
 

@@ -21,15 +21,19 @@ import com.deepanjanxyz.notepad.domain.usecase.note.GetNotesUseCase
 import com.deepanjanxyz.notepad.domain.usecase.note.GetTrashNotesUseCase
 import com.deepanjanxyz.notepad.domain.usecase.note.NoteUseCases
 import com.deepanjanxyz.notepad.domain.usecase.note.PermanentlyDeleteNoteUseCase
+import com.deepanjanxyz.notepad.domain.usecase.note.PurgeExpiredTrashUseCase
 import com.deepanjanxyz.notepad.domain.usecase.note.RestoreNoteUseCase
 import com.deepanjanxyz.notepad.domain.usecase.note.SaveNoteUseCase
 import com.deepanjanxyz.notepad.domain.usecase.note.SetNoteReminderUseCase
 import com.deepanjanxyz.notepad.domain.usecase.note.TogglePinUseCase
-import com.deepanjanxyz.notepad.domain.usecase.note.TrashNoteUseCase
+import com.deepanxyz.notepad.domain.usecase.note.TrashNoteUseCase
 import com.deepanjanxyz.notepad.domain.usecase.settings.GetSettingsUseCase
 import com.deepanjanxyz.notepad.domain.usecase.settings.SaveSettingsUseCase
 import com.deepanjanxyz.notepad.domain.usecase.settings.SettingsUseCases
 import com.deepanjanxyz.notepad.widget.TaskWidgetProvider
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 class NotepadApplication : Application() {
     val container: AppContainer by lazy { AppContainer(this) }
@@ -56,6 +60,10 @@ class NotepadApplication : Application() {
 
             override fun onActivityDestroyed(activity: Activity) = Unit
         })
+
+        // Deleted notes are kept for a fixed window and then dropped, so the
+        // purge runs once per launch rather than on every trash action.
+        CoroutineScope(Dispatchers.IO).launch { container.noteUseCases.purgeExpiredTrash() }
     }
 }
 
@@ -80,6 +88,7 @@ class AppContainer(application: Application) {
         restoreNote = RestoreNoteUseCase(repository),
         permanentlyDeleteNote = PermanentlyDeleteNoteUseCase(repository),
         emptyTrash = EmptyTrashUseCase(repository),
+        purgeExpiredTrash = PurgeExpiredTrashUseCase(repository),
         togglePin = TogglePinUseCase(repository),
         archiveNote = ArchiveNoteUseCase(repository),
         filterNotes = FilterNotesUseCase(),

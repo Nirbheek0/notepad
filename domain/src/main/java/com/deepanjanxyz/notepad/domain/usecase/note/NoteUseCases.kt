@@ -10,6 +10,7 @@ data class NoteUseCases(
     val restoreNote: RestoreNoteUseCase,
     val permanentlyDeleteNote: PermanentlyDeleteNoteUseCase,
     val emptyTrash: EmptyTrashUseCase,
+    val purgeExpiredTrash: PurgeExpiredTrashUseCase,
     val togglePin: TogglePinUseCase,
     val archiveNote: ArchiveNoteUseCase,
     val filterNotes: FilterNotesUseCase,

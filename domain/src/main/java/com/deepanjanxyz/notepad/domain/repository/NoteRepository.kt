@@ -24,6 +24,10 @@ interface NoteRepository {
     suspend fun permanentlyDelete(id: Long)
     suspend fun permanentlyDeleteNotes(ids: List<Long>)
     suspend fun emptyTrash()
+
+    /** Permanently deletes trashed notes kept longer than the retention window. */
+    suspend fun purgeExpiredTrash()
+
     suspend fun togglePin(id: Long, isPinned: Boolean)
     suspend fun updateReminderTime(id: Long, reminderTime: Long?)
 
@@ -35,4 +39,13 @@ interface NoteRepository {
     suspend fun insertLabel(name: String)
     suspend fun renameLabel(oldName: String, newName: String)
     suspend fun deleteLabel(name: String)
+
+    companion object {
+        /** How long a deleted note stays in the trash before it is purged. */
+        const val TRASH_RETENTION_DAYS = 30
+        private const val MILLIS_PER_DAY = 24L * 60L * 60L * 1000L
+
+        /** The same window in milliseconds. */
+        const val TRASH_RETENTION_MILLIS = TRASH_RETENTION_DAYS * MILLIS_PER_DAY
+    }
 }

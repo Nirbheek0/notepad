@@ -49,11 +49,11 @@ interface NoteDao {
     @Update
     suspend fun updateNote(entity: NoteEntity): Int
 
-    @Query("UPDATE notes_table SET IN_TRASH = 1 WHERE ID = :id")
-    suspend fun moveToTrash(id: Long): Int
+    @Query("UPDATE notes_table SET IN_TRASH = 1, UPDATED_AT = :trashedAt WHERE ID = :id")
+    suspend fun moveToTrash(id: Long, trashedAt: Long): Int
 
-    @Query("UPDATE notes_table SET IN_TRASH = 1 WHERE ID IN (:ids)")
-    suspend fun moveNotesToTrash(ids: List<Long>): Int
+    @Query("UPDATE notes_table SET IN_TRASH = 1, UPDATED_AT = :trashedAt WHERE ID IN (:ids)")
+    suspend fun moveNotesToTrash(ids: List<Long>, trashedAt: Long): Int
 
     @Query("UPDATE notes_table SET IN_TRASH = 0 WHERE ID = :id")
     suspend fun restoreFromTrash(id: Long): Int
@@ -81,6 +81,16 @@ interface NoteDao {
 
     @Query("DELETE FROM notes_table WHERE IN_TRASH = 1")
     suspend fun emptyTrash(): Int
+
+    /**
+     * Drops trashed notes whose keep-window has passed.
+     *
+     * A trashed note records when it was trashed in UPDATED_AT - a column only
+     * used for sorting inside the trash - so the purge needs no extra column and
+     * no schema migration that could strand an existing install.
+     */
+    @Query("DELETE FROM notes_table WHERE IN_TRASH = 1 AND UPDATED_AT <= :cutoff")
+    suspend fun purgeTrashOlderThan(cutoff: Long): Int
 
     @Query("UPDATE notes_table SET PINNED = :isPinned WHERE ID = :id")
     suspend fun setPinned(id: Long, isPinned: Boolean): Int
