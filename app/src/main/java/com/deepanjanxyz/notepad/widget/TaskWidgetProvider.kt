@@ -7,6 +7,7 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.widget.RemoteViews
 import com.deepanjanxyz.notepad.MainActivity
 import com.deepanjanxyz.notepad.R
@@ -74,6 +75,23 @@ class TaskWidgetProvider : AppWidgetProvider() {
         private val pendingIntentFlags =
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
 
+        /**
+         * The collection template has to be mutable.
+         *
+         * A row does not carry its own PendingIntent: it fills in which note and
+         * which line were tapped through [RemoteViews.setOnClickFillInIntent], and
+         * the fill-in is merged into this template. From Android 12 an immutable
+         * PendingIntent silently drops that fill-in, so the tap arrived with no
+         * note id and nothing happened. Older releases have no mutability
+         * requirement and stay mutable by default.
+         */
+        private val templatePendingIntentFlags: Int =
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
+            } else {
+                PendingIntent.FLAG_UPDATE_CURRENT
+            }
+
         /** Rebuilds every placed widget from the current notes. */
         fun refresh(context: Context) {
             val appContext = context.applicationContext
@@ -128,7 +146,12 @@ class TaskWidgetProvider : AppWidgetProvider() {
             val intent = Intent(context, TaskWidgetProvider::class.java).apply {
                 action = ACTION_TOGGLE_ITEM
             }
-            return PendingIntent.getBroadcast(context, REQUEST_CODE_TOGGLE_TEMPLATE, intent, pendingIntentFlags)
+            return PendingIntent.getBroadcast(
+                context,
+                REQUEST_CODE_TOGGLE_TEMPLATE,
+                intent,
+                templatePendingIntentFlags
+            )
         }
 
         private fun refreshIntent(context: Context): PendingIntent {
