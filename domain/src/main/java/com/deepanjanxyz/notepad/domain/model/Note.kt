@@ -16,5 +16,10 @@ data class Note(
     // "Date created" and "Last modified" sort orders - a row id cannot, because
     // editing an old note never changes its id.
     val createdAt: Long = 0L,
-    val updatedAt: Long = 0L
+    val updatedAt: Long = 0L,
+    // Epoch millis of when the note was moved to the trash; 0 when it has never
+    // been trashed. It backs the trash retention window, and is kept separate
+    // from updatedAt so a note's edit history never decides its fate in the
+    // trash.
+    val trashedAt: Long = 0L
 )

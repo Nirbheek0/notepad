@@ -42,7 +42,10 @@ data class NoteEntity(
     val createdAt: Long = 0,
 
     @ColumnInfo(name = "UPDATED_AT", defaultValue = "0")
-    val updatedAt: Long = 0
+    val updatedAt: Long = 0,
+
+    @ColumnInfo(name = "TRASHED_AT", defaultValue = "0")
+    val trashedAt: Long = 0
 ) {
     fun toDomain(): Note = Note(
         id = id,
@@ -56,7 +59,8 @@ data class NoteEntity(
         inArchive = inArchive,
         reminderTime = reminderTime,
         createdAt = createdAt,
-        updatedAt = updatedAt
+        updatedAt = updatedAt,
+        trashedAt = trashedAt
     )
 
     companion object {
@@ -72,7 +76,8 @@ data class NoteEntity(
             inArchive = note.inArchive,
             reminderTime = note.reminderTime,
             createdAt = note.createdAt,
-            updatedAt = note.updatedAt
+            updatedAt = note.updatedAt,
+            trashedAt = note.trashedAt
         )
     }
 }

@@ -308,7 +308,8 @@ fun TrashScreen(
                     )
                     Spacer(modifier = Modifier.size(8.dp))
                     Text(
-                        text = "Notes here are recycled. You can restore them anytime or permanently delete them.",
+                        text = "Notes in trash are automatically permanently deleted after 30 days. " +
+                            "You can restore or delete them manually before then.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )

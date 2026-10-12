@@ -61,18 +61,41 @@ import com.deepanjanxyz.notepad.ui.theme.NoteColorOptions
 import com.deepanjanxyz.notepad.worker.NoteReminderScheduler
 import java.util.Locale
 
+/**
+ * Vibrant, high-contrast swatches used for search matches. Every keyword in the
+ * query is assigned its own colour, so a note that matches several terms stays
+ * easy to scan at a glance instead of every hit sharing a single tint.
+ */
+private val SearchHighlightColors = listOf(
+    Color(0xFFFFE082), // Amber
+    Color(0xFF9AE6FF), // Sky
+    Color(0xFFA5F0B4), // Mint
+    Color(0xFFFFB3C7), // Rose
+    Color(0xFFD6B6FF), // Lilac
+    Color(0xFFFFC79A) // Apricot
+)
+
+/**
+ * Foreground painted on top of a highlight swatch. Kept dark and constant so the
+ * match stays legible on every swatch, in both light and dark themes.
+ */
+private val SearchHighlightTextColor = Color(0xFF1B1B1F)
+
 @Composable
 fun buildHighlightedText(
     text: String,
     query: String,
-    highlightColor: Color = MaterialTheme.colorScheme.primary.copy(alpha = 0.35f),
-    highlightTextColor: Color = MaterialTheme.colorScheme.primary
+    colors: List<Color> = SearchHighlightColors
 ): AnnotatedString {
     if (query.isBlank()) {
         return AnnotatedString(text)
     }
 
-    return remember(text, query, highlightColor, highlightTextColor) {
+    // An empty palette would make the per-keyword colour lookup divide by zero,
+    // so it falls back to the default swatches.
+    val palette = colors.ifEmpty { SearchHighlightColors }
+
+    return remember(text, query, palette) {
         val keywords = query.trim().lowercase(Locale.getDefault())
             .split("\\s+".toRegex())
             .filter { it.isNotBlank() }
@@ -82,52 +105,55 @@ fun buildHighlightedText(
         }
 
         val lowerText = text.lowercase(Locale.getDefault())
-        val ranges = mutableListOf<IntRange>()
-        for (kw in keywords) {
+        // Each match keeps the index of the keyword that produced it, so its
+        // colour follows the keyword rather than its position in the note.
+        val matches = mutableListOf<Triple<Int, Int, Int>>()
+        keywords.forEachIndexed { keywordIndex, keyword ->
             var startIndex = 0
             while (startIndex < text.length) {
-                val matchIndex = lowerText.indexOf(kw, startIndex)
+                val matchIndex = lowerText.indexOf(keyword, startIndex)
                 if (matchIndex == -1) break
-                val endIndex = matchIndex + kw.length
-                ranges.add(matchIndex until endIndex)
+                matches.add(Triple(matchIndex, matchIndex + keyword.length, keywordIndex))
                 startIndex = matchIndex + 1
             }
         }
 
-        if (ranges.isEmpty()) {
+        if (matches.isEmpty()) {
             return@remember AnnotatedString(text)
         }
 
-        ranges.sortBy { it.first }
-        val mergedRanges = mutableListOf<IntRange>()
-        var currentRange = ranges[0]
-        for (i in 1 until ranges.size) {
-            val r = ranges[i]
-            if (r.first <= currentRange.last + 1) {
-                currentRange = currentRange.first until maxOf(currentRange.last + 1, r.last + 1)
+        matches.sortBy { it.first }
+        // Merge only overlapping matches (for example a repeated short keyword);
+        // the first keyword in the query keeps the colour of the merged span.
+        val merged = mutableListOf<Triple<Int, Int, Int>>()
+        for (match in matches) {
+            val last = merged.lastOrNull()
+            if (last != null && match.first < last.second) {
+                if (match.second > last.second) {
+                    merged[merged.size - 1] = Triple(last.first, match.second, last.third)
+                }
             } else {
-                mergedRanges.add(currentRange)
-                currentRange = r
+                merged.add(match)
             }
         }
-        mergedRanges.add(currentRange)
 
         buildAnnotatedString {
             var cursor = 0
-            for (r in mergedRanges) {
-                if (r.first > cursor) {
-                    append(text.substring(cursor, r.first))
+            for (match in merged) {
+                if (match.first > cursor) {
+                    append(text.substring(cursor, match.first))
                 }
+                val swatch = palette[match.third % palette.size]
                 withStyle(
                     SpanStyle(
-                        background = highlightColor,
-                        color = highlightTextColor,
+                        background = swatch,
+                        color = SearchHighlightTextColor,
                         fontWeight = FontWeight.Bold
                     )
                 ) {
-                    append(text.substring(r.first, r.last + 1))
+                    append(text.substring(match.first, match.second))
                 }
-                cursor = r.last + 1
+                cursor = match.second
             }
             if (cursor < text.length) {
                 append(text.substring(cursor))
@@ -177,8 +203,8 @@ fun NoteCard(
         if (note.content.contains("[ ] ") || note.content.contains("[x] ", ignoreCase = true)) {
             note.content.lines().map { line ->
                 when {
-                    line.startsWith("[x] ", ignoreCase = true) -> "☑ " + line.substring(4)
-                    line.startsWith("[ ] ") -> "☐ " + line.substring(4)
+                    line.startsWith("[x] ", ignoreCase = true) -> "\u2611 " + line.substring(4)
+                    line.startsWith("[ ] ") -> "\u2610 " + line.substring(4)
                     else -> line
                 }
             }.joinToString("\n")

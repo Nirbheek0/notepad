@@ -59,10 +59,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.deepanjanxyz.notepad.domain.model.ChecklistItem
+import com.deepanjanxyz.notepad.domain.model.ChecklistSegment
 import com.deepanjanxyz.notepad.domain.model.DrawingSerializer
 import com.deepanjanxyz.notepad.domain.model.Note
-import com.deepanjanxyz.notepad.domain.model.parseChecklist
-import com.deepanjanxyz.notepad.domain.model.serializeChecklist
+import com.deepanjanxyz.notepad.domain.model.containsChecklistLine
+import com.deepanjanxyz.notepad.domain.model.parseChecklistSegments
+import com.deepanjanxyz.notepad.domain.model.serializeChecklistSegments
 import com.deepanjanxyz.notepad.ui.components.ReminderDialog
 import com.deepanjanxyz.notepad.ui.feature_editor.components.EditorChecklistContent
 import com.deepanjanxyz.notepad.ui.feature_editor.components.EditorColorPickerSheet
@@ -106,7 +108,7 @@ fun NoteEditorScreen(
     var showLabelsSheet by remember { mutableStateOf(false) }
     var isLoaded by remember { mutableStateOf(false) }
     var isChecklistMode by remember { mutableStateOf(false) }
-    var checklistItems by remember { mutableStateOf(listOf<ChecklistItem>()) }
+    var checklistSegments by remember { mutableStateOf(listOf<ChecklistSegment>()) }
     var newItemText by remember { mutableStateOf("") }
 
     LaunchedEffect(noteId) {
@@ -129,27 +131,61 @@ fun NoteEditorScreen(
                     content = rawContent
                 }
 
-                val lines = content.lines().filter { it.isNotBlank() }
-                val hasChecklist = lines.isNotEmpty() && lines.any { it.startsWith("[ ] ") || it.startsWith("[x] ", ignoreCase = true) }
-                if (hasChecklist) {
+                if (content.containsChecklistLine()) {
                     isChecklistMode = true
-                    checklistItems = parseChecklist(content)
+                    checklistSegments = parseChecklistSegments(content)
                 }
             }
         }
         isLoaded = true
     }
 
-    fun updateChecklistItems(newItems: List<ChecklistItem>) {
-        checklistItems = newItems
-        content = serializeChecklist(newItems)
+    fun updateChecklistSegments(newSegments: List<ChecklistSegment>) {
+        checklistSegments = newSegments
+        content = serializeChecklistSegments(newSegments)
+    }
+
+    /** Flips one task, leaving every other line - text or task - untouched. */
+    fun setTaskChecked(itemId: String, isChecked: Boolean) {
+        updateChecklistSegments(
+            checklistSegments.map { segment ->
+                if (segment is ChecklistSegment.Task && segment.item.id == itemId) {
+                    ChecklistSegment.Task(segment.item.copy(isChecked = isChecked))
+                } else {
+                    segment
+                }
+            }
+        )
+    }
+
+    /** Rewrites the text of one task, leaving every other line untouched. */
+    fun setTaskText(itemId: String, newText: String) {
+        updateChecklistSegments(
+            checklistSegments.map { segment ->
+                if (segment is ChecklistSegment.Task && segment.item.id == itemId) {
+                    ChecklistSegment.Task(segment.item.copy(text = newText))
+                } else {
+                    segment
+                }
+            }
+        )
+    }
+
+    /** Removes one task, leaving the surrounding text and blank lines in place. */
+    fun removeTask(itemId: String) {
+        updateChecklistSegments(
+            checklistSegments.filterNot { it is ChecklistSegment.Task && it.item.id == itemId }
+        )
     }
 
     fun addNewItem() {
         val trimmed = newItemText.trim()
         if (trimmed.isNotBlank()) {
-            val updated = checklistItems + ChecklistItem(text = trimmed, isChecked = false)
-            updateChecklistItems(updated)
+            updateChecklistSegments(
+                checklistSegments + ChecklistSegment.Task(
+                    ChecklistItem(text = trimmed, isChecked = false)
+                )
+            )
             newItemText = ""
         }
     }
@@ -170,11 +206,13 @@ fun NoteEditorScreen(
     fun forceSave() {
         var effectiveText = content
         if (isChecklistMode) {
-            var items = checklistItems
+            var segments = checklistSegments
             if (newItemText.isNotBlank()) {
-                items = items + ChecklistItem(text = newItemText.trim(), isChecked = false)
+                segments = segments + ChecklistSegment.Task(
+                    ChecklistItem(text = newItemText.trim(), isChecked = false)
+                )
             }
-            effectiveText = serializeChecklist(items)
+            effectiveText = serializeChecklistSegments(segments)
         }
         if (isLoaded && (title.isNotBlank() || effectiveText.isNotBlank() || drawingPart.isNotBlank() || tags.isNotEmpty() || reminderTime != null)) {
             val combined = getCombinedContent(effectiveText)
@@ -188,7 +226,7 @@ fun NoteEditorScreen(
     }
 
     fun shareNote() {
-        val textPart = if (isChecklistMode) serializeChecklist(checklistItems) else content
+        val textPart = if (isChecklistMode) serializeChecklistSegments(checklistSegments) else content
         val body = buildString {
             if (title.isNotBlank()) {
                 append(title)
@@ -257,13 +295,35 @@ fun NoteEditorScreen(
                 isChecklistMode = isChecklistMode,
                 onToggleChecklist = {
                     if (!isChecklistMode) {
+                        // Switching on turns the note into a list: every line becomes
+                        // a checklist item, so a plain note gains checkboxes instead
+                        // of staying plain lines inside the checklist editor. Blank
+                        // lines are kept as spacing rather than becoming empty items.
                         isChecklistMode = true
-                        val parsed: List<ChecklistItem> = if (content.isNotBlank()) parseChecklist(content) else emptyList()
-                        checklistItems = parsed
-                        content = serializeChecklist(parsed)
+                        checklistSegments = parseChecklistSegments(content).map { segment ->
+                            when (segment) {
+                                is ChecklistSegment.Text ->
+                                    if (segment.text.isBlank()) {
+                                        segment
+                                    } else {
+                                        ChecklistSegment.Task(
+                                            ChecklistItem(text = segment.text, isChecked = false)
+                                        )
+                                    }
+                                is ChecklistSegment.Task -> segment
+                            }
+                        }
+                        content = serializeChecklistSegments(checklistSegments)
                     } else {
+                        // Switching off strips the checklist markers and keeps the
+                        // text, so the note reverts cleanly to plain lines.
                         isChecklistMode = false
-                        content = checklistItems.joinToString("\n") { it.text }
+                        content = checklistSegments.joinToString("\n") { segment ->
+                            when (segment) {
+                                is ChecklistSegment.Text -> segment.text
+                                is ChecklistSegment.Task -> segment.item.text
+                            }
+                        }
                     }
                 },
                 hasColor = colorIndex > 0,
@@ -399,26 +459,13 @@ fun NoteEditorScreen(
 
                 if (isChecklistMode) {
                     EditorChecklistContent(
-                        checklistItems = checklistItems,
+                        segments = checklistSegments,
                         newItemText = newItemText,
                         onNewItemTextChange = { newItemText = it },
                         onAddNewItem = { addNewItem() },
-                        onItemCheckChange = { id, isChecked ->
-                            val updated = checklistItems.map {
-                                if (it.id == id) it.copy(isChecked = isChecked) else it
-                            }
-                            updateChecklistItems(updated)
-                        },
-                        onItemTextChange = { id, newText ->
-                            val updated = checklistItems.map {
-                                if (it.id == id) it.copy(text = newText) else it
-                            }
-                            updateChecklistItems(updated)
-                        },
-                        onItemDelete = { id ->
-                            val updated = checklistItems.filterNot { it.id == id }
-                            updateChecklistItems(updated)
-                        }
+                        onItemCheckChange = { id, isChecked -> setTaskChecked(id, isChecked) },
+                        onItemTextChange = { id, newText -> setTaskText(id, newText) },
+                        onItemDelete = { id -> removeTask(id) }
                     )
                 } else {
                     BasicTextField(
@@ -569,11 +616,13 @@ fun NoteEditorScreen(
                 coroutineScope.launch {
                     var effectiveContent = content
                     if (isChecklistMode) {
-                        var items = checklistItems
+                        var segments = checklistSegments
                         if (newItemText.isNotBlank()) {
-                            items = items + ChecklistItem(text = newItemText.trim(), isChecked = false)
+                            segments = segments + ChecklistSegment.Task(
+                                ChecklistItem(text = newItemText.trim(), isChecked = false)
+                            )
                         }
-                        effectiveContent = serializeChecklist(items)
+                        effectiveContent = serializeChecklistSegments(segments)
                     }
                     val savedId = onSaveNote(currentNoteId, title, effectiveContent, colorIndex, tags, isPinned, inArchive, newMillis)
                     if (currentNoteId <= 0L && savedId > 0L) {
