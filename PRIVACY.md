@@ -31,6 +31,7 @@ The permissions actually present in the installed app are:
 - `android.permission.USE_BIOMETRIC`
 - `android.permission.POST_NOTIFICATIONS`
 - `android.permission.VIBRATE`
+- `android.permission.WRITE_EXTERNAL_STORAGE` — capped at `maxSdkVersion="28"`, so it is requested only on Android 9 and below, to write a JSON backup into the public Downloads folder. On Android 10 and later the backup uses MediaStore and needs no runtime permission.
 - `android.permission.ACCESS_NETWORK_STATE` — contributed by a dependency, not requested by the app itself. It allows reading whether a network is available; it does not grant network access.
 
 The repository does contain code that would use the network if it were enabled: a Supabase/PostgREST client, email/password and email-OTP authentication, and a backend-URL reachability check in `SetupRepository`. Nothing in the app constructs or calls that code — the setup dialog that would drive it is defined but never shown — so it is not reachable from the current UI. Even if it were reachable, the missing `INTERNET` permission would prevent it from connecting.
@@ -49,6 +50,7 @@ None. The app bundles no analytics, advertising, tracking or crash-reporting SDK
 | `POST_NOTIFICATIONS` | To post a reminder notification for a note you have scheduled. Requested on Android 13 and later. |
 | `VIBRATE` | To let the reminder notification vibrate. |
 | `WRITE_EXTERNAL_STORAGE` | Capped at `maxSdkVersion="28"`. Used only on Android 9 and below, to write a JSON backup into the public Downloads folder. On Android 10 and later the backup uses MediaStore and needs no runtime permission. |
+| `ACCESS_NETWORK_STATE` | Contributed by a dependency, not requested by the app itself. Lets the app read whether a network is available; it does not grant network access. |
 
 Apart from that Android 9-and-below storage permission, the app requests no camera, microphone, location, contacts, phone, or media permissions.
 
