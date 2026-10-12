@@ -338,7 +338,8 @@ private fun LabelListItem(
 
                 DropdownMenu(
                     expanded = menuExpanded,
-                    onDismissRequest = { menuExpanded = false }
+                    onDismissRequest = { menuExpanded = false },
+                    shape = RoundedCornerShape(16.dp)
                 ) {
                     DropdownMenuItem(
                         text = { Text("Rename") },
