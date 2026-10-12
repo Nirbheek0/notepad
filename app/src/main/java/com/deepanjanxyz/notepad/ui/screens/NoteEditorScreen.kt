@@ -295,15 +295,29 @@ fun NoteEditorScreen(
                 isChecklistMode = isChecklistMode,
                 onToggleChecklist = {
                     if (!isChecklistMode) {
+                        // Switching on turns the note into a list: every line becomes
+                        // a checklist item, so a plain note gains checkboxes instead
+                        // of staying plain lines inside the checklist editor. Blank
+                        // lines are kept as spacing rather than becoming empty items.
                         isChecklistMode = true
-                        // Text lines come through as they were written, so switching
-                        // into checklist mode never rewrites the note.
-                        checklistSegments = parseChecklistSegments(content)
+                        checklistSegments = parseChecklistSegments(content).map { segment ->
+                            when (segment) {
+                                is ChecklistSegment.Text ->
+                                    if (segment.text.isBlank()) {
+                                        segment
+                                    } else {
+                                        ChecklistSegment.Task(
+                                            ChecklistItem(text = segment.text, isChecked = false)
+                                        )
+                                    }
+                                is ChecklistSegment.Task -> segment
+                            }
+                        }
                         content = serializeChecklistSegments(checklistSegments)
                     } else {
+                        // Switching off strips the checklist markers and keeps the
+                        // text, so the note reverts cleanly to plain lines.
                         isChecklistMode = false
-                        // Leaving checklist mode keeps the text and drops only the
-                        // checkbox prefixes.
                         content = checklistSegments.joinToString("\n") { segment ->
                             when (segment) {
                                 is ChecklistSegment.Text -> segment.text

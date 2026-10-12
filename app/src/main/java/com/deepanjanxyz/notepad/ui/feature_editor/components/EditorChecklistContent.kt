@@ -6,6 +6,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -184,27 +185,13 @@ private fun ChecklistTaskRow(
             amberAccent = amberAccent,
             onCheckChange = onCheckChange
         )
-        BasicTextField(
-            value = text,
-            onValueChange = { onTextChange(itemId, it) },
-            textStyle = TextStyle(
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Normal,
-                color = if (isChecked) Color(0xFF6E7179) else textPrimary,
-                textDecoration = if (isChecked) TextDecoration.LineThrough else TextDecoration.None,
-                lineHeight = 24.sp
-            ),
-            cursorBrush = SolidColor(amberAccent),
-            modifier = Modifier
-                .weight(1f)
-                .padding(horizontal = 14.dp)
-                .testTag(
-                    if (isChecked) {
-                        "completed_checklist_text_$itemId"
-                    } else {
-                        "checklist_text_$itemId"
-                    }
-                )
+        ChecklistItemText(
+            itemId = itemId,
+            text = text,
+            isChecked = isChecked,
+            textPrimary = textPrimary,
+            amberAccent = amberAccent,
+            onTextChange = onTextChange
         )
         ChecklistRemoveButton(
             itemId = itemId,
@@ -214,6 +201,48 @@ private fun ChecklistTaskRow(
     }
 }
 
+/**
+ * A checklist item is a single line: a newline typed or pasted into the field
+ * would split the note into an extra item on the next save, so it becomes a
+ * space instead.
+ */
+@Composable
+private fun RowScope.ChecklistItemText(
+    itemId: String,
+    text: String,
+    isChecked: Boolean,
+    textPrimary: Color,
+    amberAccent: Color,
+    onTextChange: (String, String) -> Unit
+) {
+    BasicTextField(
+        value = text,
+        onValueChange = { onTextChange(itemId, it.replace('\n', ' ')) },
+        textStyle = TextStyle(
+            fontSize = 18.sp,
+            fontWeight = FontWeight.Normal,
+            color = if (isChecked) Color(0xFF6E7179) else textPrimary,
+            textDecoration = if (isChecked) TextDecoration.LineThrough else TextDecoration.None,
+            lineHeight = 24.sp
+        ),
+        cursorBrush = SolidColor(amberAccent),
+        modifier = Modifier
+            .weight(1f)
+            .padding(horizontal = 14.dp)
+            .testTag(
+                if (isChecked) {
+                    "completed_checklist_text_$itemId"
+                } else {
+                    "checklist_text_$itemId"
+                }
+            )
+    )
+}
+
+/**
+ * The tap target is larger than the box it draws: a 20dp hit area is easy to
+ * miss, which made ticking an item feel unreliable.
+ */
 @Composable
 private fun ChecklistCheckbox(
     itemId: String,
@@ -221,6 +250,19 @@ private fun ChecklistCheckbox(
     amberAccent: Color,
     onCheckChange: (String, Boolean) -> Unit
 ) {
+    Box(
+        modifier = Modifier
+            .size(40.dp)
+            .clickable { onCheckChange(itemId, !isChecked) }
+            .testTag(if (isChecked) "checkbox_completed_$itemId" else "checkbox_$itemId"),
+        contentAlignment = Alignment.Center
+    ) {
+        ChecklistCheckboxMark(isChecked = isChecked, amberAccent = amberAccent)
+    }
+}
+
+@Composable
+private fun ChecklistCheckboxMark(isChecked: Boolean, amberAccent: Color) {
     Box(
         modifier = Modifier
             .size(20.dp)
@@ -231,9 +273,7 @@ private fun ChecklistCheckbox(
                 } else {
                     Modifier.border(1.8.dp, Color(0xFF8E9099), RoundedCornerShape(3.dp))
                 }
-            )
-            .clickable { onCheckChange(itemId, !isChecked) }
-            .testTag(if (isChecked) "checkbox_completed_$itemId" else "checkbox_$itemId"),
+            ),
         contentAlignment = Alignment.Center
     ) {
         if (isChecked) {
