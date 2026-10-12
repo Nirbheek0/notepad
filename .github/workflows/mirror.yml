@@ -10,16 +10,24 @@ on:
 permissions:
   contents: read
 
+# Mirror runs push to external hosts, so serialise them: two runs racing the
+# same ref would fight over the remote and could clobber a force-sync.
+concurrency:
+  group: mirror
+  cancel-in-progress: false
+
 jobs:
   smart-mirror:
     name: Mirror to GitLab and Codeberg
     runs-on: ubuntu-latest
+    timeout-minutes: 30
 
     steps:
       - name: Checkout Repository with Full History
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Configure Git Identity
         run: |
@@ -46,25 +54,32 @@ jobs:
         env:
           GITLAB_TOKEN: ${{ secrets.GITLAB_TOKEN }}
         run: |
+          set -euo pipefail
           GITLAB_URL="https://oauth2:${GITLAB_TOKEN}@gitlab.com/deepanjanxyz/notepad.git"
+          refspecs=('refs/heads/*:refs/heads/*' 'refs/tags/*:refs/tags/*')
 
           echo "Attempting normal GitLab push..."
 
-          if git push --prune "$GITLAB_URL" \
-            'refs/heads/*:refs/heads/*' \
-            'refs/tags/*:refs/tags/*'; then
-
+          if output=$(git push --prune "$GITLAB_URL" "${refspecs[@]}" 2>&1); then
+            printf '%s\n' "$output"
             echo "GitLab normal push succeeded."
+            exit 0
+          fi
 
-          else
-            echo "GitLab normal push failed."
-            echo "Attempting force synchronization..."
+          printf '%s\n' "$output"
 
-            git push --force --prune "$GITLAB_URL" \
-              'refs/heads/*:refs/heads/*' \
-              'refs/tags/*:refs/tags/*'
-
+          # Force-push ONLY when the remote refused a ref update because it
+          # diverged (a non-fast-forward or an existing tag). An authentication,
+          # network or pre-receive-hook failure must never trigger an automatic
+          # force push, because that could rewrite or delete branches and tags on
+          # the mirror.
+          if printf '%s\n' "$output" | grep -qiE 'non-fast-forward|fetch first|already exists|\[rejected\]'; then
+            echo "GitLab push was rejected as a divergence; force-synchronising the mirror."
+            git push --force --prune "$GITLAB_URL" "${refspecs[@]}"
             echo "GitLab force synchronization succeeded."
+          else
+            echo "::error::GitLab push failed for a reason other than divergence; refusing to force-push. See the output above."
+            exit 1
           fi
 
       - name: Sync to Codeberg
@@ -72,23 +87,26 @@ jobs:
         env:
           CODEBERG_TOKEN: ${{ secrets.CODEBERG_TOKEN }}
         run: |
+          set -euo pipefail
           CODEBERG_URL="https://deepanjanxyz:${CODEBERG_TOKEN}@codeberg.org/deepanjanxyz/notepad.git"
+          refspecs=('refs/heads/*:refs/heads/*' 'refs/tags/*:refs/tags/*')
 
           echo "Attempting normal Codeberg push..."
 
-          if git push --prune "$CODEBERG_URL" \
-            'refs/heads/*:refs/heads/*' \
-            'refs/tags/*:refs/tags/*'; then
-
+          if output=$(git push --prune "$CODEBERG_URL" "${refspecs[@]}" 2>&1); then
+            printf '%s\n' "$output"
             echo "Codeberg normal push succeeded."
+            exit 0
+          fi
 
-          else
-            echo "Codeberg normal push failed."
-            echo "Attempting force synchronization..."
+          printf '%s\n' "$output"
 
-            git push --force --prune "$CODEBERG_URL" \
-              'refs/heads/*:refs/heads/*' \
-              'refs/tags/*:refs/tags/*'
-
+          # Same rule as GitLab: force only on a genuine divergence.
+          if printf '%s\n' "$output" | grep -qiE 'non-fast-forward|fetch first|already exists|\[rejected\]'; then
+            echo "Codeberg push was rejected as a divergence; force-synchronising the mirror."
+            git push --force --prune "$CODEBERG_URL" "${refspecs[@]}"
             echo "Codeberg force synchronization succeeded."
+          else
+            echo "::error::Codeberg push failed for a reason other than divergence; refusing to force-push. See the output above."
+            exit 1
           fi

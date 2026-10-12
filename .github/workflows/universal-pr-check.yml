@@ -14,6 +14,7 @@ jobs:
   build:
     name: Debug & Release build
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     env:
       KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
       KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
@@ -60,6 +61,7 @@ jobs:
   unit-tests:
     name: Unit tests
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
@@ -87,6 +89,7 @@ jobs:
   lint:
     name: Android lint
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     outputs:
       warnings: ${{ steps.count.outputs.warnings }}
     steps:
@@ -125,9 +128,31 @@ jobs:
           fi
           echo "warnings=$count" >> "$GITHUB_OUTPUT"
 
+      - name: Collect lint findings
+        if: always()
+        env:
+          ROOT: ${{ github.workspace }}
+        run: |
+          mapfile -t reports < <(find . -name 'lint-results-debug.xml' -print)
+          if [ "${#reports[@]}" -eq 0 ]; then
+            echo "[]" > head-lint-findings.json
+          else
+            python3 .github/scripts/pr-analysis.py collect --root "$ROOT" --out head-lint-findings.json "${reports[@]}"
+          fi
+
+      - name: Upload lint findings
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: head-lint-findings
+          path: head-lint-findings.json
+          if-no-files-found: warn
+          retention-days: 7
+
   detekt:
     name: Static analysis (detekt)
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     outputs:
       configured: ${{ steps.detect.outputs.configured }}
     steps:
@@ -164,9 +189,35 @@ jobs:
         if: steps.detect.outputs.configured == 'true'
         run: ./gradlew detekt --no-daemon
 
+      - name: Collect detekt findings
+        if: always()
+        env:
+          ROOT: ${{ github.workspace }}
+        run: |
+          if [ "${{ steps.detect.outputs.configured }}" != "true" ]; then
+            echo "[]" > head-detekt-findings.json
+          else
+            mapfile -t reports < <(find . -path '*/build/reports/detekt/*.xml' -print)
+            if [ "${#reports[@]}" -eq 0 ]; then
+              echo "[]" > head-detekt-findings.json
+            else
+              python3 .github/scripts/pr-analysis.py collect --root "$ROOT" --out head-detekt-findings.json "${reports[@]}"
+            fi
+          fi
+
+      - name: Upload detekt findings
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: head-detekt-findings
+          path: head-detekt-findings.json
+          if-no-files-found: warn
+          retention-days: 7
+
   secrets-scan:
     name: Secret scan
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
@@ -178,13 +229,112 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+  baseline:
+    name: Base branch baseline
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout PR head (for the analysis helper)
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Checkout base revision
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: base-src
+          fetch-depth: 0
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v6
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Set up Android SDK (platform 37)
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "platforms;android-37.0" "build-tools;36.0.0" > /dev/null
+
+      - name: Make gradlew executable
+        run: chmod +x base-src/gradlew
+
+      # Best-effort: the baseline is informational, so a hiccup here must never
+      # turn into a failing required check or block the merge.
+      - name: Run lint and detekt on the base revision
+        continue-on-error: true
+        run: |
+          cd base-src
+          ./gradlew lintDebug detekt --no-daemon --parallel
+
+      - name: Collect baseline findings
+        if: always()
+        env:
+          ROOT: ${{ github.workspace }}/base-src
+        run: |
+          mapfile -t reports < <(find base-src -name 'lint-results-debug.xml' -print; find base-src -path '*/build/reports/detekt/*.xml' -print)
+          if [ "${#reports[@]}" -eq 0 ]; then
+            echo "[]" > base-findings.json
+          else
+            python3 .github/scripts/pr-analysis.py collect --root "$ROOT" --out base-findings.json "${reports[@]}"
+          fi
+
+      - name: Upload baseline findings
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: base-findings
+          path: base-findings.json
+          if-no-files-found: warn
+          retention-days: 7
+
   report:
     name: PR status report
     runs-on: ubuntu-latest
-    needs: [build, unit-tests, lint, detekt, secrets-scan]
+    timeout-minutes: 15
+    needs: [build, unit-tests, lint, detekt, secrets-scan, baseline]
     if: always()
     steps:
-      - name: Build report body
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Download analysis findings
+        uses: actions/download-artifact@v7
+        with:
+          pattern: '*-findings'
+          path: findings
+          merge-multiple: true
+
+      - name: Compare warnings against the baseline
+        env:
+          SERVER: ${{ github.server_url }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if [ ! -f findings/base-findings.json ]; then
+            echo "::notice::Baseline findings are unavailable; the warning regression will be skipped."
+            exit 0
+          fi
+          head_files=()
+          if [ -f findings/head-lint-findings.json ]; then head_files+=(findings/head-lint-findings.json); fi
+          if [ -f findings/head-detekt-findings.json ]; then head_files+=(findings/head-detekt-findings.json); fi
+          if [ "${#head_files[@]}" -eq 0 ]; then
+            echo "::notice::PR-head findings are unavailable; the warning regression will be skipped."
+            exit 0
+          fi
+          python3 .github/scripts/pr-analysis.py compare \
+            --base findings/base-findings.json \
+            --head "${head_files[@]}" \
+            --server "$SERVER" --repo "$REPO" \
+            --head-sha "$HEAD_SHA" --base-sha "$BASE_SHA" \
+            --out regression.md --errors-out analysis-errors.md
+
+      - name: Assemble report
         id: body
         env:
           BUILD: ${{ needs.build.result }}
@@ -194,6 +344,8 @@ jobs:
           DETEKT: ${{ needs.detekt.result }}
           DETEKT_CONFIGURED: ${{ needs.detekt.outputs.configured }}
           SECRETS: ${{ needs.secrets-scan.result }}
+          BASELINE: ${{ needs.baseline.result }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           if [ "$BUILD" = "success" ]; then
             build_icon="🟢"; build_summary="Debug and signed release APKs assembled"
@@ -230,7 +382,6 @@ jobs:
           fi
 
           {
-            echo "body<<EOF"
             echo "## Pull request check summary"
             echo ""
             echo "| Test & Inspection Suite | Status | Summary |"
@@ -241,7 +392,45 @@ jobs:
             echo "| **Static Code Analysis (Detekt)** | $detekt_icon | $detekt_summary |"
             echo "| **Security & Secret Scan** | $secrets_icon | $secrets_summary |"
             echo ""
-            echo "[View full run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})"
+            echo "[View full run]($RUN_URL)"
+          } > report.md
+
+          if [ -f regression.md ]; then
+            { echo ""; cat regression.md; } >> report.md
+          else
+            {
+              echo ""
+              echo "## ⚠️ Warning regression"
+              echo ""
+              echo "_The base-branch baseline was unavailable for this run, so the warning regression could not be computed._"
+            } >> report.md
+          fi
+
+          {
+            echo ""
+            echo "## ❌ Errors & failures"
+            echo ""
+            failures=0
+            for entry in "Debug & release build:$BUILD" "Unit tests:$TESTS" "Android lint:$LINT" "Detekt:$DETEKT" "Secret scan:$SECRETS"; do
+              job_name="${entry%%:*}"
+              job_result="${entry#*:}"
+              if [ "$job_result" != "success" ] && [ "$job_result" != "skipped" ]; then
+                echo "- **$job_name** — \`$job_result\` — [view job logs]($RUN_URL)"
+                failures=$((failures + 1))
+              fi
+            done
+            if [ -f analysis-errors.md ] && [ -s analysis-errors.md ]; then
+              cat analysis-errors.md
+              failures=$((failures + 1))
+            fi
+            if [ "$failures" -eq 0 ]; then
+              echo "No errors or failures were detected in this run."
+            fi
+          } >> report.md
+
+          {
+            echo "body<<EOF"
+            cat report.md
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
 
