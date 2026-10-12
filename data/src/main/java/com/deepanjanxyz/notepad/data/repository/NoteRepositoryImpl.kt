@@ -44,11 +44,28 @@ class NoteRepositoryImpl(
 
     override suspend fun insertOrUpdate(note: Note): Long = withContext(ioDispatcher) {
         val entity = NoteEntity.fromDomain(note)
-        if (note.id <= 0L) {
+        val id = if (note.id <= 0L) {
             noteDao.insertNote(entity)
         } else {
             noteDao.updateNote(entity)
             note.id
+        }
+        // A note can arrive carrying tags that are not in the label table yet - a
+        // backup restore, an import, or a note recovered after clearing app data -
+        // and a tag missing from that table cannot be renamed or deleted from the
+        // label screen. Registering the note's tags here keeps every stored note's
+        // tags manageable.
+        registerTags(note.tags)
+        id
+    }
+
+    /** Adds any of [tags] that the label table does not already hold. */
+    private suspend fun registerTags(tags: List<String>) {
+        tags.forEach { tag ->
+            val name = tag.trim().replace("#", "")
+            if (name.isNotEmpty() && labelDao.getLabelByName(name) == null) {
+                labelDao.insertLabel(LabelEntity(name = name))
+            }
         }
     }
 
