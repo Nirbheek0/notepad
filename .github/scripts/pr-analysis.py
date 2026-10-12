@@ -64,6 +64,25 @@ def relpath(path, root) -> str:
     return p
 
 
+# Android lint and detekt both emit severities that are not warnings at all
+# (lint "Information"/"Hint", detekt "info"). Only Error/Fatal and Warning are
+# real problems; everything else is dropped so it is never counted or listed as
+# a warning.
+_SEVERITY_ALIASES = {
+    "fatal": "error", "error": "error",
+    "warning": "warning",
+    "information": "info", "info": "info",
+    "hint": "info", "ignore": "info", "ignored": "info",
+}
+
+
+def _normalise_severity(raw):
+    """Return 'error'/'warning', or None to drop a non-actionable level."""
+    key = (raw or "warning").strip().lower()
+    severity = _SEVERITY_ALIASES.get(key, key)
+    return severity if severity in ("error", "warning") else None
+
+
 def parse_report(path, root):
     """Parse one lint or detekt XML report into a list of normalised findings."""
     findings = []
@@ -78,9 +97,9 @@ def parse_report(path, root):
 
     if tag == "issues":  # Android lint
         for issue in r.iter("issue"):
-            sev = (issue.get("severity") or "warning").lower()
-            sev = {"fatal": "error", "error": "error",
-                   "warning": "warning", "information": "info"}.get(sev, sev)
+            sev = _normalise_severity(issue.get("severity"))
+            if sev is None:
+                continue
             loc = issue.find("location")
             findings.append({
                 "tool": "lint",
@@ -95,11 +114,14 @@ def parse_report(path, root):
         for fe in r.iter("file"):
             f = relpath(fe.get("name"), root)
             for err in fe.iter("error"):
+                sev = _normalise_severity(err.get("severity"))
+                if sev is None:
+                    continue
                 source = err.get("source") or "detekt"
                 findings.append({
                     "tool": "detekt",
                     "rule": source.split(".")[-1],
-                    "severity": (err.get("severity") or "warning").lower(),
+                    "severity": sev,
                     "file": f,
                     "line": _to_int(err.get("line")),
                     "column": _to_int(err.get("column")),
@@ -125,7 +147,10 @@ def load_findings(paths):
             with open(p, encoding="utf-8") as fh:
                 data = json.load(fh)
             if isinstance(data, list):
-                out.extend(data)
+                # Defensive: never let a non-warning level (hint/information/info)
+                # back in, even from a findings file produced by an older run.
+                out.extend(f for f in data
+                           if f.get("severity") in ("error", "warning"))
         except Exception as exc:  # noqa: BLE001
             print(f"::warning::could not read findings file {p}: {exc}", file=sys.stderr)
     return out
@@ -211,21 +236,22 @@ def render(diff, server, repo, head_sha, base_sha):
         "## ⚠️ Warning regression",
         "",
         "The PR head and the base-branch baseline were analysed with the same "
-        "**Android lint** and **detekt** tasks. Findings are matched on rule and "
-        "location (tool, rule, file, line); a finding that keeps its rule and "
-        "message but moves is reported as *moved*, not as resolved + new.",
+        "**Android lint** and **detekt** tasks. Only what this pull request adds, "
+        "moves or resolves is listed; findings that already existed on the base "
+        "branch and are untouched are counted, not listed. Findings are matched "
+        "on rule and location (tool, rule, file, line), so a finding that keeps "
+        "its rule and message but moves is reported as *moved*.",
         "",
         "| Category | Count |",
         "| :--- | ---: |",
         f"| 🆕 New warnings | {n_new} |",
         f"| ↔️ Moved warnings | {n_moved} |",
-        f"| ♻️ Existing warnings | {n_exist} |",
         f"| ✅ Resolved warnings | {n_resolved} |",
+        f"| ♻️ Pre-existing (unchanged) | {n_exist} |",
         "",
     ]
     if n_new == 0 and n_moved == 0 and n_resolved == 0:
-        lines += ["No warnings were introduced, moved, or resolved by this pull request.",
-                  ""]
+        lines += ["This pull request introduces, moves or resolves no warnings.", ""]
 
     _section(lines, "🆕 New warnings", diff["new"],
              lambda f: _finding_line(f, head_sha, server, repo),
@@ -236,9 +262,9 @@ def render(diff, server, repo, head_sha, base_sha):
     _section(lines, "✅ Resolved warnings", diff["resolved"],
              lambda f: _finding_line(f, base_sha, server, repo),
              "None — every baseline warning is still present.")
-    _section(lines, "♻️ Existing warnings", diff["existing"],
-             lambda p: _finding_line(p[1], head_sha, server, repo),
-             "None — the baseline was already clean.")
+    if n_exist:
+        lines += [f"_{n_exist} pre-existing finding(s) are unchanged by this pull "
+                  "request and are not listed._", ""]
     return "\n".join(lines)
 
 
