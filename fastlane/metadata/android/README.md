@@ -12,7 +12,20 @@ Google Play / F-Droid store listing for Elite Memo Pro, in fastlane's `metadata/
 | `<locale>/changelogs/<versionCode>.txt` | "What's new" text for that version code |
 | `<locale>/images/` | Icon, feature graphic and phone screenshots |
 
-## What changed in v1.0.11
+## Changelog files
+
+Each release adds a versioned "What's new" file at `en-US/changelogs/<versionCode>.txt`,
+written for the F-Droid / Play listing and kept under the 500-character limit:
+
+| File | Release |
+| :--- | :--- |
+| `11.txt` | v1.0.11 - first multilingual release |
+| `15.txt` | v1.0.15 - toolchain modernisation |
+| `16.txt` | v1.0.16 - navigation, sorting, and backup & restore |
+| `17.txt` | v1.0.17 - animations and a safer Trash |
+| `18.txt` | v1.0.18 - home-screen widget and colourful search |
+
+## Initial multilingual listing (v1.0.11)
 
 Compared with the previous release (v1.0.10, which shipped **only `en-US`**), this release
 rewrote the `en-US` listing and added **12 new locales**, bringing the directory to
@@ -42,7 +55,7 @@ Each new locale adds a localized `title.txt` and `short_description.txt`:
 - **title.txt** — unchanged: `Elite Memo Pro`.
 - **short_description.txt** — `Private, biometric-protected Markdown notepad.` -> `Write, organize, and draw notes with labels, checklists, and reminders.`
 - **full_description.txt** — rewritten to describe the v1.0.11 feature set: text notes and checklists, freehand drawing (pen, marker, highlighter, selection, eraser, canvas backgrounds), labels, colours and pins, search and filtering, grid/list layouts, archive and Trash, reminders, light/dark/system appearance, an optional app lock, and local Room storage.
-- **changelogs/** — the per-version files `4.txt`, `5.txt`, `6.txt`, `7.txt` and `10.txt` were removed. A fallback `default.txt` was added, then replaced by a versioned `11.txt` for the current version code.
+- **changelogs/** — the per-version files `4.txt`, `5.txt`, `6.txt`, `7.txt` and `10.txt` were removed. A fallback `default.txt` was added, then replaced by a versioned `11.txt` for the current version code. Later releases add their own files - see [Changelog files](#changelog-files).
 
 ### 3. Images
 
