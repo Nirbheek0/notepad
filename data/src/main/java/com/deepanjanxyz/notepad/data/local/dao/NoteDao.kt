@@ -105,6 +105,11 @@ interface NoteDao {
      * rest of the formatting come back untouched. The read, the edit and the
      * write happen inside a single transaction, so two rapid taps (or a toggle
      * racing a save from the app) cannot clobber each other.
+     *
+     * Ticking a task is an edit, so UPDATED_AT moves to now exactly as it would
+     * for a save from the editor. Without that the note kept its old "Last
+     * modified" time and stayed where it was under that sort order even though
+     * the widget had just changed it.
      */
     @Transaction
     suspend fun toggleChecklistLine(id: Long, lineIndex: Int): Boolean {
@@ -119,7 +124,12 @@ interface NoteDao {
             return false
         }
         lines[lineIndex] = toggled
-        updateNote(entity.copy(content = lines.joinToString("\n")))
+        updateNote(
+            entity.copy(
+                content = lines.joinToString("\n"),
+                updatedAt = System.currentTimeMillis()
+            )
+        )
         return true
     }
 
