@@ -26,9 +26,10 @@ The app is **local-first**: notes, labels, and settings live in an on-device Roo
 
 **Organise**
 - Labels: add, rename, delete, and apply labels to notes.
-- Search across note titles, body text, and tags; filter by label or colour.
+- Search across note titles, body text, and tags, with colourful match highlighting; filter by label or colour.
+- Sort notes by last modified, date created, title, or colour.
 - Grid and list layouts on the home screen.
-- Archive to set notes aside, and Trash with restore or permanent delete (plus empty-trash).
+- Archive to set notes aside, and Trash with restore or permanent delete (plus empty-trash); trashed notes are cleared automatically after 30 days.
 
 **Reminders & security**
 - Schedule a reminder per note; when it fires, WorkManager posts a notification that opens the note.
@@ -36,6 +37,9 @@ The app is **local-first**: notes, labels, and settings live in an on-device Roo
 - Optional app lock using biometrics or the device credential.
 
 **Extras**
+- Home-screen widget: pin checklist notes and tick items off without opening the app.
+- Share a note as plain text.
+- Back up and restore all notes to a JSON file in Downloads, with optional automatic backups.
 - Counts for active notes, pinned notes, and words in Settings.
 - Edge-to-edge Material 3 interface.
 
@@ -74,8 +78,8 @@ The app is **local-first**: notes, labels, and settings live in an on-device Roo
 
 | Area | Choice |
 |---|---|
-| Language | Kotlin 2.2.10 |
-| UI | Jetpack Compose with Material 3 (Compose BOM `2026.08.00`) |
+| Language | Kotlin 2.4.21 |
+| UI | Jetpack Compose with Material 3 (Compose BOM `2026.09.00`) |
 | Local storage | Room (notes & labels) and DataStore Preferences (settings) |
 | Background work | WorkManager (note reminders) |
 | Security | AndroidX Biometric (optional app lock) |
@@ -87,7 +91,7 @@ The app is **local-first**: notes, labels, and settings live in an on-device Roo
 
 ## Build & release
 
-Elite Memo Pro is a standard Gradle project built with Kotlin and the Android Gradle Plugin against **JDK 17**. Debug builds need no secrets. Release builds are signed from a keystore at `app/keystore.jks` together with the `KEYSTORE_PASSWORD`, `KEY_ALIAS`, and `KEY_PASSWORD` values, supplied through `app/.env`, `local.properties`, or matching environment variables. A release build without them fails fast rather than producing an unsigned artifact, and none of these files are committed.
+Elite Memo Pro is a standard Gradle project built with Kotlin and the Android Gradle Plugin against **JDK 21**. Debug builds need no secrets. Release builds are signed from a keystore at `app/keystore.jks` together with the `KEYSTORE_PASSWORD`, `KEY_ALIAS`, and `KEY_PASSWORD` values, supplied through `app/.env`, `local.properties`, or matching environment variables. When those values are missing, the build warns and produces an unsigned release APK rather than failing, so reproducible builds (for example F-Droid or IzzyOnDroid) still succeed; none of these files are committed.
 
 Versions follow **Semantic Versioning** (`X.Y.Z`) with a `versionCode` that increments by one per release. `dev` is the integration branch and `main` is the release branch. Pull requests into `main` that change application code receive an automatic patch bump, and merging to `main` publishes a tagged GitHub release (`v<versionName>`) with a signed APK and SHA-256 checksums. Continuous integration runs the unit tests and a debug build on every push and pull request, and a per-pull-request check adds lint, static analysis, and a secret scan, reported back as a single status table.
 

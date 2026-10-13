@@ -2,7 +2,7 @@
 
 This policy describes how **Elite Memo Pro** (`com.deepanjanxyz.notepad`) handles your data. It reflects how the app actually behaves as built from this repository: every statement below is based on the app's source code, its `AndroidManifest.xml` files, its Gradle configuration and the signed APK published in the Releases section.
 
-Last updated: 6 October 2026
+Last updated: 12 October 2026
 
 ## Summary
 
@@ -31,6 +31,7 @@ The permissions actually present in the installed app are:
 - `android.permission.USE_BIOMETRIC`
 - `android.permission.POST_NOTIFICATIONS`
 - `android.permission.VIBRATE`
+- `android.permission.WRITE_EXTERNAL_STORAGE` — capped at `maxSdkVersion="28"`, so it is requested only on Android 9 and below, to write a JSON backup into the public Downloads folder. On Android 10 and later the backup uses MediaStore and needs no runtime permission.
 - `android.permission.ACCESS_NETWORK_STATE` — contributed by a dependency, not requested by the app itself. It allows reading whether a network is available; it does not grant network access.
 
 The repository does contain code that would use the network if it were enabled: a Supabase/PostgREST client, email/password and email-OTP authentication, and a backend-URL reachability check in `SetupRepository`. Nothing in the app constructs or calls that code — the setup dialog that would drive it is defined but never shown — so it is not reachable from the current UI. Even if it were reachable, the missing `INTERNET` permission would prevent it from connecting.
@@ -48,8 +49,10 @@ None. The app bundles no analytics, advertising, tracking or crash-reporting SDK
 | `USE_BIOMETRIC` | To show the biometric or device-credential prompt when the optional app lock is enabled. |
 | `POST_NOTIFICATIONS` | To post a reminder notification for a note you have scheduled. Requested on Android 13 and later. |
 | `VIBRATE` | To let the reminder notification vibrate. |
+| `WRITE_EXTERNAL_STORAGE` | Capped at `maxSdkVersion="28"`. Used only on Android 9 and below, to write a JSON backup into the public Downloads folder. On Android 10 and later the backup uses MediaStore and needs no runtime permission. |
+| `ACCESS_NETWORK_STATE` | Contributed by a dependency, not requested by the app itself. Lets the app read whether a network is available; it does not grant network access. |
 
-The app requests no camera, microphone, location, contacts, phone, or external-storage/media permissions.
+Apart from that Android 9-and-below storage permission, the app requests no camera, microphone, location, contacts, phone, or media permissions.
 
 ## App lock (biometrics and device credential)
 
@@ -67,7 +70,7 @@ The app declares `android:allowBackup="true"`, and its backup rules include the 
 
 ## Export, import and sharing
 
-The app has no export, import or share feature for your notes. It does not write your notes to shared storage, and it does not read files from your device.
+You can share a note as plain text through Android's standard share sheet, and you can back up or restore all notes to a JSON file. A backup is written to the public Downloads folder - through MediaStore on Android 10 and later, and with the capped `WRITE_EXTERNAL_STORAGE` permission on Android 9 and below. Restoring reads a JSON file that you pick. None of this sends your data anywhere: sharing hands the text to whichever app you choose, and the backup file stays on your device until you move or delete it.
 
 ## Data sharing with third parties
 
@@ -81,7 +84,7 @@ The developer has no access to your notes, drawings, labels or settings. There i
 
 You control your data from within the app:
 
-- Deleting a note moves it to **Trash**; trashing is not permanent until the trash is emptied or the note is deleted permanently.
+- Deleting a note moves it to **Trash**, where it is kept for 30 days and then cleared automatically; emptying the trash, or deleting a note permanently, removes it sooner.
 - Emptying the trash, or permanently deleting a note, removes it from the app's database.
 - Uninstalling the app, or clearing its data from Android's app settings, removes everything the app stored, including the notes database and its settings.
 
