@@ -100,11 +100,24 @@ class MainActivity : FragmentActivity() {
         splashScreen.setOnExitAnimationListener { provider ->
             val iconView = provider.iconView
             val splashView = provider.view
-            val scaleX = ObjectAnimator.ofFloat(iconView, View.SCALE_X, 1f, 1.2f)
-            val scaleY = ObjectAnimator.ofFloat(iconView, View.SCALE_Y, 1f, 1.2f)
-            val fadeOut = ObjectAnimator.ofFloat(splashView, View.ALPHA, 1f, 0f)
+            // Not every platform hands back both views - a newer release can
+            // return a splash screen with no icon - so animate only what is
+            // present, and always hand the splash screen back.
+            val animators: List<Animator> = buildList {
+                if (iconView != null) {
+                    add(ObjectAnimator.ofFloat(iconView, View.SCALE_X, 1f, 1.2f))
+                    add(ObjectAnimator.ofFloat(iconView, View.SCALE_Y, 1f, 1.2f))
+                }
+                if (splashView != null) {
+                    add(ObjectAnimator.ofFloat(splashView, View.ALPHA, 1f, 0f))
+                }
+            }
+            if (animators.isEmpty()) {
+                provider.remove()
+                return@setOnExitAnimationListener
+            }
             AnimatorSet().apply {
-                playTogether(scaleX, scaleY, fadeOut)
+                playTogether(animators)
                 duration = 300L
                 interpolator = DecelerateInterpolator()
                 addListener(object : AnimatorListenerAdapter() {

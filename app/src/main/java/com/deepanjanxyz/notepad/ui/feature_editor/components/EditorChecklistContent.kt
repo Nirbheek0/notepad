@@ -6,6 +6,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -19,7 +20,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
@@ -36,12 +36,20 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.deepanjanxyz.notepad.domain.model.ChecklistItem
+import com.deepanjanxyz.notepad.domain.model.ChecklistSegment
 import com.deepanjanxyz.notepad.ui.components.ActionTooltip
 
+/**
+ * Checklist mode for the note editor.
+ *
+ * Every line is rendered where it was written: an ordinary text line stays a
+ * plain line and a checklist line gets a checkbox. Because the underlying model
+ * keeps text and tasks as separate segments, editing one task never reformats -
+ * or converts - the rest of the note.
+ */
 @Composable
 fun EditorChecklistContent(
-    checklistItems: List<ChecklistItem>,
+    segments: List<ChecklistSegment>,
     newItemText: String,
     onNewItemTextChange: (String) -> Unit,
     onAddNewItem: () -> Unit,
@@ -54,52 +62,37 @@ fun EditorChecklistContent(
     modifier: Modifier = Modifier
 ) {
     Column(modifier = modifier.fillMaxWidth()) {
-        val uncompleted = checklistItems.filter { !it.isChecked }
-        uncompleted.forEach { item ->
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(20.dp)
-                        .clip(RoundedCornerShape(3.dp))
-                        .border(1.8.dp, Color(0xFF8E9099), RoundedCornerShape(3.dp))
-                        .clickable { onItemCheckChange(item.id, true) }
-                        .testTag("checkbox_${item.id}")
-                )
-                BasicTextField(
-                    value = item.text,
-                    onValueChange = { onItemTextChange(item.id, it) },
-                    textStyle = TextStyle(
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Normal,
-                        color = textPrimary,
-                        lineHeight = 24.sp
-                    ),
-                    cursorBrush = SolidColor(amberAccent),
-                    modifier = Modifier
-                        .weight(1f)
-                        .padding(horizontal = 14.dp)
-                        .testTag("checklist_text_${item.id}")
-                )
-                ActionTooltip("Remove item") {
-                    IconButton(
-                        onClick = { onItemDelete(item.id) },
-                        modifier = Modifier
-                            .size(36.dp)
-                            .testTag("remove_item_${item.id}")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Close,
-                            contentDescription = "Remove item",
-                            tint = Color(0xFF6E7179),
-                            modifier = Modifier.size(18.dp)
+        segments.forEach { segment ->
+            when (segment) {
+                is ChecklistSegment.Text -> {
+                    if (segment.text.isBlank()) {
+                        Spacer(modifier = Modifier.height(12.dp))
+                    } else {
+                        Text(
+                            text = segment.text,
+                            style = TextStyle(
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Normal,
+                                color = textPrimary,
+                                lineHeight = 24.sp
+                            ),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp)
                         )
                     }
                 }
+
+                is ChecklistSegment.Task -> ChecklistTaskRow(
+                    itemId = segment.item.id,
+                    text = segment.item.text,
+                    isChecked = segment.item.isChecked,
+                    textPrimary = textPrimary,
+                    amberAccent = amberAccent,
+                    onCheckChange = onItemCheckChange,
+                    onTextChange = onItemTextChange,
+                    onDelete = onItemDelete
+                )
             }
         }
 
@@ -165,78 +158,160 @@ fun EditorChecklistContent(
                 }
             }
         }
+    }
+}
 
-        // Completed Items Section
-        val completedItems = checklistItems.filter { it.isChecked }
-        if (completedItems.isNotEmpty()) {
-            Spacer(modifier = Modifier.height(14.dp))
-            HorizontalDivider(color = Color(0xFF2C2C30), thickness = 1.dp)
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = "${completedItems.size} Completed items",
-                style = TextStyle(
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = Color(0xFF8E9099)
-                ),
-                modifier = Modifier.padding(vertical = 6.dp)
-            )
+/** One checklist line: its checkbox, its editable text and its remove button. */
+@Composable
+private fun ChecklistTaskRow(
+    itemId: String,
+    text: String,
+    isChecked: Boolean,
+    textPrimary: Color,
+    amberAccent: Color,
+    onCheckChange: (String, Boolean) -> Unit,
+    onTextChange: (String, String) -> Unit,
+    onDelete: (String) -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        ChecklistCheckbox(
+            itemId = itemId,
+            isChecked = isChecked,
+            amberAccent = amberAccent,
+            onCheckChange = onCheckChange
+        )
+        ChecklistItemText(
+            itemId = itemId,
+            text = text,
+            isChecked = isChecked,
+            textPrimary = textPrimary,
+            amberAccent = amberAccent,
+            onTextChange = onTextChange
+        )
+        ChecklistRemoveButton(
+            itemId = itemId,
+            isChecked = isChecked,
+            onDelete = onDelete
+        )
+    }
+}
 
-            completedItems.forEach { item ->
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(20.dp)
-                            .clip(RoundedCornerShape(3.dp))
-                            .background(amberAccent)
-                            .clickable { onItemCheckChange(item.id, false) }
-                            .testTag("checkbox_completed_${item.id}"),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Check,
-                            contentDescription = "Completed",
-                            tint = Color(0xFF1B1B1F),
-                            modifier = Modifier.size(15.dp)
-                        )
-                    }
-                    BasicTextField(
-                        value = item.text,
-                        onValueChange = { onItemTextChange(item.id, it) },
-                        textStyle = TextStyle(
-                            fontSize = 18.sp,
-                            color = Color(0xFF6E7179),
-                            textDecoration = TextDecoration.LineThrough,
-                            lineHeight = 24.sp
-                        ),
-                        cursorBrush = SolidColor(amberAccent),
-                        modifier = Modifier
-                            .weight(1f)
-                            .padding(horizontal = 14.dp)
-                            .testTag("completed_checklist_text_${item.id}")
-                    )
-                    ActionTooltip("Remove item") {
-                        IconButton(
-                            onClick = { onItemDelete(item.id) },
-                            modifier = Modifier
-                                .size(36.dp)
-                                .testTag("remove_completed_item_${item.id}")
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Close,
-                                contentDescription = "Remove item",
-                                tint = Color(0xFF6E7179),
-                                modifier = Modifier.size(18.dp)
-                            )
-                        }
-                    }
+/**
+ * A checklist item is a single line: a newline typed or pasted into the field
+ * would split the note into an extra item on the next save, so it becomes a
+ * space instead.
+ */
+@Composable
+private fun RowScope.ChecklistItemText(
+    itemId: String,
+    text: String,
+    isChecked: Boolean,
+    textPrimary: Color,
+    amberAccent: Color,
+    onTextChange: (String, String) -> Unit
+) {
+    BasicTextField(
+        value = text,
+        onValueChange = { onTextChange(itemId, it.replace('\n', ' ')) },
+        textStyle = TextStyle(
+            fontSize = 18.sp,
+            fontWeight = FontWeight.Normal,
+            color = if (isChecked) Color(0xFF6E7179) else textPrimary,
+            textDecoration = if (isChecked) TextDecoration.LineThrough else TextDecoration.None,
+            lineHeight = 24.sp
+        ),
+        cursorBrush = SolidColor(amberAccent),
+        modifier = Modifier
+            .weight(1f)
+            .padding(horizontal = 14.dp)
+            .testTag(
+                if (isChecked) {
+                    "completed_checklist_text_$itemId"
+                } else {
+                    "checklist_text_$itemId"
                 }
-            }
+            )
+    )
+}
+
+/**
+ * The tap target is larger than the box it draws: a 20dp hit area is easy to
+ * miss, which made ticking an item feel unreliable.
+ */
+@Composable
+private fun ChecklistCheckbox(
+    itemId: String,
+    isChecked: Boolean,
+    amberAccent: Color,
+    onCheckChange: (String, Boolean) -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .size(40.dp)
+            .clickable { onCheckChange(itemId, !isChecked) }
+            .testTag(if (isChecked) "checkbox_completed_$itemId" else "checkbox_$itemId"),
+        contentAlignment = Alignment.Center
+    ) {
+        ChecklistCheckboxMark(isChecked = isChecked, amberAccent = amberAccent)
+    }
+}
+
+@Composable
+private fun ChecklistCheckboxMark(isChecked: Boolean, amberAccent: Color) {
+    Box(
+        modifier = Modifier
+            .size(20.dp)
+            .clip(RoundedCornerShape(3.dp))
+            .then(
+                if (isChecked) {
+                    Modifier.background(amberAccent)
+                } else {
+                    Modifier.border(1.8.dp, Color(0xFF8E9099), RoundedCornerShape(3.dp))
+                }
+            ),
+        contentAlignment = Alignment.Center
+    ) {
+        if (isChecked) {
+            Icon(
+                imageVector = Icons.Default.Check,
+                contentDescription = "Completed",
+                tint = Color(0xFF1B1B1F),
+                modifier = Modifier.size(15.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun ChecklistRemoveButton(
+    itemId: String,
+    isChecked: Boolean,
+    onDelete: (String) -> Unit
+) {
+    ActionTooltip("Remove item") {
+        IconButton(
+            onClick = { onDelete(itemId) },
+            modifier = Modifier
+                .size(36.dp)
+                .testTag(
+                    if (isChecked) {
+                        "remove_completed_item_$itemId"
+                    } else {
+                        "remove_item_$itemId"
+                    }
+                )
+        ) {
+            Icon(
+                imageVector = Icons.Default.Close,
+                contentDescription = "Remove item",
+                tint = Color(0xFF6E7179),
+                modifier = Modifier.size(18.dp)
+            )
         }
     }
 }
